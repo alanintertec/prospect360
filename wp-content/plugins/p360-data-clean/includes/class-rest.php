@@ -140,6 +140,22 @@ final class P360_Rest {
         if ($j['status'] !== 'complete') { return self::err('Your file is still being processed.', 409); }
         $path = p360_storage_dir() . '/' . $j['out_file'];
         if (!preg_match('/^[a-f0-9]{32}\.csv$/', $j['out_file']) || !is_file($path)) { return self::err('Not available.', 404); }
+        if ($r->get_param('invalid')) {
+            // original columns + the reason, for rows that were rejected (blank rows are left out)
+            $meta = json_decode((string)$j['job'], true) ?: [];
+            $ncols = (int)($meta['ncols'] ?? 0);
+            self::send_csv('prospect360-invalid-rows-' . substr($j['id'], 0, 8) . '.csv', function () use ($path, $ncols) {
+                $in = fopen($path, 'r');
+                $out = fopen('php://output', 'w');
+                $head = fgetcsv($in);
+                fputcsv($out, array_merge(array_slice($head, 0, $ncols), ['Reason']));
+                while (($row = fgetcsv($in)) !== false) {
+                    $reason = (string)end($row);
+                    if ($reason !== '' && $reason !== 'No value supplied') { fputcsv($out, array_merge(array_slice($row, 0, $ncols), [$reason])); }
+                }
+                fclose($in); fclose($out);
+            });
+        }
         self::send_csv('prospect360-cleaned-' . substr($j['id'], 0, 8) . '.csv', function () use ($path) { readfile($path); });
     }
 }

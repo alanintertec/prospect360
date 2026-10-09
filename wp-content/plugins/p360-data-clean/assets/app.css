@@ -26,3 +26,7 @@
 .p360 .p360-steps li.on{background:#2563eb;color:#fff}
 .p360 .p360-test{background:#fff7e0;border:1px solid #f0b400;border-radius:8px;padding:.7rem 1rem;margin:0 0 1rem;font-size:.95rem}
 .p360 table.p360-files{width:100%;border-collapse:collapse;font-size:.95rem}.p360 table.p360-files td{padding:.4rem .3rem;border-top:1px solid #e5e7eb}
+.p360 .p360-help{background:#f6f8fb;border:1px solid #d6d9de;border-radius:8px;padding:.7rem 1rem;margin:.9rem 0;font-size:.92rem}.p360 .p360-help ul{margin:.4rem 0 .2rem 1.1rem;padding:0}
+.p360 .p360-job{border-top:1px solid #e5e7eb;padding:.8rem 0}.p360 .p360-pill{display:inline-block;border-radius:999px;background:#e5e7eb;padding:.15rem .7rem;margin:.3rem .4rem .3rem 0;font-size:.9rem}.p360 .p360-pill.ok{background:#dcfce7}.p360 .p360-pill.bad{background:#fee2e2}
+.p360 ul.p360-reasons{margin:.2rem 0 .5rem 1.1rem;padding:0;font-size:.9rem;color:#444}
+.p360 h3{margin:1.4rem 0 .5rem}.p360 .p360-card>h3:first-child{margin-top:0}

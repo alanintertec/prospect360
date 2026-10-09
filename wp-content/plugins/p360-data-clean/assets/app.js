@@ -31,6 +31,23 @@
       'Pay with card 4242 4242 4242 4242, any future expiry, any CVC.' + (C.dryRun ? ' DRY RUN: results are fake and nothing is sent to Provero.' : '')]);
   }
 
+  function helpFor(service) {
+    var email = service === 'email', tps = service === 'tps';
+    var items = email ? [
+      'One email address per row, in a column headed "email".',
+      'Format: name@domain.com - no spaces, one @, and a domain with a dot (e.g. jane@example.co.uk).',
+      'Anything that does not look like an email is rejected without being checked, but still uses a record.'
+    ] : [
+      'One phone number per row, in a column headed "phone_number".',
+      'Digits only, with optional + ( ) - . and spaces. These are all fine: 07700 900123, +44 7700 900123, +44 (0)7700 900123, +44-7700-900123, 0044 7700 900123.',
+      'No letters or other symbols. Numbers without a country code are treated as UK.',
+      tps ? 'TPS / CTPS screening works for UK numbers only.' : 'Non-UK numbers are fine if they start with their country code, e.g. +33 1 23 45 67 89.',
+      'Values that are not valid phone numbers are rejected without being checked, but still use a record.'
+    ];
+    return el('div', { 'class': 'p360-help' }, [el('strong', { text: 'Accepted format' }), el('ul', {}, items.map(function (t) { return el('li', { text: t }); })),
+      el('p', { 'class': 'p360-note', text: 'Please check your data first: each row with a value uses one record. Blank cells are free.' })]);
+  }
+
   /* ---------- buy ---------- */
   function renderBuy() {
     root.textContent = '';
@@ -51,12 +68,13 @@
     form.appendChild(records);
     form.appendChild(el('label', { 'class': 'p360-f', 'for': 'p360-email', text: 'Your email (receipt and order link)' }));
     form.appendChild(email);
+    var help = el('div', {}); form.appendChild(help);
     form.appendChild(sum); form.appendChild(err); form.appendChild(btn);
     form.appendChild(el('p', { 'class': 'p360-note', text: 'You buy a balance of records. Each row with a value in your files uses one record (please check your data first), and you can upload several files until the balance is used. Unused records are valid for ' + C.expiryDays + ' days. After payment you can download a sample CSV and upload your files.' }));
 
     function update() {
       var n = parseInt(records.value, 10) || 0, ok = n >= C.min && n <= C.max;
-      sum.textContent = '';
+      sum.textContent = ''; help.textContent = ''; help.appendChild(helpFor(svc));
       if (!ok) { return; }
       var a = net(svc, n), v = Math.round(a * C.vat);
       sum.appendChild(el('tr', {}, [el('td', { text: C.services[svc].label + ' x ' + n.toLocaleString() }), el('td', { text: money(a) })]));
@@ -127,7 +145,7 @@
     var err = el('div', { 'class': 'p360-err', role: 'alert' });
     var file = el('input', { type: 'file', accept: '.csv,text/csv', id: 'p360-file' });
     var btn = el('button', { type: 'submit', 'class': 'p360-btn', text: 'Upload and clean' });
-    var form = el('form', {}, [el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Upload a CSV with a "' + s.column + '" column (max ' + C.maxMb + 'MB)' }), file, err, btn]);
+    var form = el('form', {}, [helpFor(o.service), el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Upload a CSV with a "' + s.column + '" column (max ' + C.maxMb + 'MB)' }), file, err, btn]);
     form.addEventListener('submit', function (ev) {
       ev.preventDefault(); err.textContent = '';
       if (!file.files[0]) { err.textContent = 'Please choose a CSV file.'; return; }
@@ -140,15 +158,24 @@
   }
 
   function filesTable(jobs) {
-    var rows = jobs.map(function (j) {
-      var last;
-      if (j.status === 'complete') { last = el('a', { href: C.rest + 'download?' + q + '&job=' + j.job, text: 'Download' }); }
-      else if (j.status === 'processing') { last = document.createTextNode('Processing ' + n(j.done) + '/' + n(j.total)); }
-      else { last = document.createTextNode('Expired'); }
-      return el('tr', {}, [el('td', { text: fmtDate(j.created) }), el('td', { text: n(j.total) + ' rows' }), el('td', { text: n(j.billed) + ' records' }), el('td', {}, [last])]);
+    var blocks = jobs.map(function (j) {
+      var kids = [el('div', {}, [el('strong', { text: fmtDate(j.created) }), ' - ' + n(j.total) + ' rows, ' + n(j.billed) + ' records used'])];
+      if (j.status === 'processing') { kids.push(el('div', { 'class': 'p360-note', text: 'Processing ' + n(j.done) + ' of ' + n(j.total) + '...' })); }
+      else if (j.status === 'expired') { kids.push(el('div', { 'class': 'p360-note', text: 'Expired - files are deleted after a few days.' })); }
+      else {
+        var st = j.stats;
+        if (st) {
+          kids.push(el('div', {}, [el('span', { 'class': 'p360-pill ok', text: n(st.ok) + ' checked' }), el('span', { 'class': 'p360-pill bad', text: n(st.invalid) + ' invalid / rejected' }), el('span', { 'class': 'p360-pill', text: n(st.blank) + ' blank' })]));
+          var reasons = Object.keys(st.reasons || {});
+          if (reasons.length) { kids.push(el('ul', { 'class': 'p360-reasons' }, reasons.map(function (r) { return el('li', { text: n(st.reasons[r]) + ' x ' + r }); }))); }
+        }
+        var links = [el('a', { 'class': 'p360-btn', href: C.rest + 'download?' + q + '&job=' + j.job, text: 'Download cleaned CSV' })];
+        if (st && st.invalid > 0) { links.push(' ', el('a', { 'class': 'p360-btn alt', href: C.rest + 'download?' + q + '&job=' + j.job + '&invalid=1', text: 'Invalid rows only (' + n(st.invalid) + ')' })); }
+        kids.push(el('p', {}, links));
+      }
+      return el('div', { 'class': 'p360-job' }, kids);
     });
-    return el('div', {}, [el('h3', { text: 'Your files' }), el('table', { 'class': 'p360-files' }, rows),
-      el('p', { 'class': 'p360-note', text: 'Files are deleted automatically after a few days, so download them promptly.' })]);
+    return el('div', {}, [el('h3', { text: 'Your files' })].concat(blocks, [el('p', { 'class': 'p360-note', text: 'Files are deleted automatically after a few days, so download them promptly. Fixed rows can be re-uploaded in a new file (they use records again).' })]));
   }
 
   function paint(live, j) {

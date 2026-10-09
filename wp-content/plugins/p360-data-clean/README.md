@@ -36,6 +36,7 @@ Safety checks: test mode refuses to run with a live key (and live mode refuses a
 - **Repeats** within a file (emails case-insensitive; phone numbers compared after normalising) are looked up once and the result reused.
 - **Email**: a basic format check (single `@`, dotted domain, length). Failures show "Invalid email address format" and are not sent to Provero.
 - **Phone**: digits with optional `+ ( ) - .` and spaces. `07700 900123`, `+44 7700 900123`, `+44 (0)7700 900123`, `+44-7700-900123`, `0044 7700 900123` and `44 7700 900123` all become `+447700900123`. Letters/other symbols and wrong lengths are rejected locally; numbers with no country code are assumed UK; TPS rejects non-UK numbers.
+- After each file the order page shows a summary (checked / invalid / blank, with counts per reason) and offers **Download cleaned CSV** (every row) and **Invalid rows only** (original columns + a Reason column; blank rows left out). The accepted email/phone formats are shown on the buy page and above the upload box.
 - Rows rejected locally still use a record (the customer is responsible for their data) but cost you nothing.
 
 ## Notes

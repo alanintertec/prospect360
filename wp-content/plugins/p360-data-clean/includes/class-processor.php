@@ -177,6 +177,7 @@ final class P360_Processor {
             }
 
             $n = count(P360_Provero::columns($order['service']));
+            $stats = $meta['stats'] ?? ['ok' => 0, 'blank' => 0, 'invalid' => 0, 'reasons' => []];
             $out = fopen("$dir/{$j['out_file']}", 'a');
             flock($out, LOCK_EX);
             foreach ($rows as $r) {
@@ -184,16 +185,26 @@ final class P360_Processor {
                 if ($k === '') {
                     $cols = array_fill(0, $n, '');
                     $cols[$n - 1] = 'No value supplied';
+                    $stats['blank']++;
                 } else {
                     $cols = $cache[$k] ?? null;
                     if ($cols === null) { $cols = array_fill(0, $n, ''); $cols[$n - 1] = 'Lookup failed'; }
+                    $reason = (string)$cols[$n - 1];
+                    if ($reason === '') {
+                        $stats['ok']++;
+                    } else {
+                        $stats['invalid']++;
+                        if (!isset($stats['reasons'][$reason]) && count($stats['reasons']) >= 15) { $reason = 'Other'; }
+                        $stats['reasons'][$reason] = ($stats['reasons'][$reason] ?? 0) + 1;
+                    }
                 }
                 fputcsv($out, array_merge($r, $cols));
             }
             flock($out, LOCK_UN);
             fclose($out);
 
-            $fields = ['done_rows' => (int)$j['done_rows'] + count($rows), 'in_offset' => $new_offset, 'message' => ''];
+            $meta['stats'] = $stats;
+            $fields = ['done_rows' => (int)$j['done_rows'] + count($rows), 'in_offset' => $new_offset, 'message' => '', 'job' => wp_json_encode($meta)];
             if ($eof || !$rows) { $fields['status'] = 'complete'; @unlink($cache_path); @unlink("$dir/{$j['in_file']}"); $fields['in_file'] = ''; }
             P360_Orders::job_update($job_id, $fields);
             return self::progress(P360_Orders::job_get($job_id));
@@ -207,7 +218,9 @@ final class P360_Processor {
 
     /** One job as the UI sees it. */
     public static function progress(array $j): array {
+        $meta = json_decode((string)($j['job'] ?? ''), true);
         return [
+            'stats'   => is_array($meta) ? ($meta['stats'] ?? null) : null,
             'job'     => $j['id'],
             'status'  => $j['status'],
             'done'    => (int)$j['done_rows'],

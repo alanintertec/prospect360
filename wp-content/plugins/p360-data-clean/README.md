@@ -1,0 +1,27 @@
+# Prospect360 Data Clean (WordPress plugin)
+
+Visitors pick a service, pay per record with Stripe Checkout, download a sample CSV, then upload their CSV to be cleaned through the [Provero API](https://api.provero.io/docs). Results are returned as the original CSV plus verification columns.
+
+| Service | Provero endpoint | Columns added |
+|---|---|---|
+| Email verification | `POST /api/validate/email` | syntax, deliverable, catch-all, disposable, role-based, risk level, check result, typo suggestion |
+| Mobile (HLR) | `POST /api/validate/phone` | normalised number, status, live, current/original network |
+| TPS / CTPS | `POST /api/validate/phone-tps` | formatted number, on TPS/CTPS, registration dates |
+
+## Install
+1. Copy `wp-content/plugins/p360-data-clean` into the site and activate it (this creates the `wp_p360_orders` table and a daily cleanup job).
+2. **Settings -> Data Clean**: enter the Provero token, Stripe secret key and webhook signing secret, and set your per-record prices. Secrets can instead be defined in `wp-config.php` as `P360_PROVERO_TOKEN`, `P360_STRIPE_SECRET`, `P360_STRIPE_WEBHOOK_SECRET`.
+3. In Stripe, add a webhook endpoint `https://<site>/wp-json/p360/v1/stripe-webhook` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`, and paste its signing secret into the settings.
+4. Add `[p360_data_clean]` to a page (e.g. `/data-clean/`).
+
+## How it works
+- **Pricing**: `records x price`, minimum charge applies, VAT added as a second Stripe line item. The server recomputes the price; the browser's total is display only.
+- **Payment**: the order is only marked paid when the Stripe webhook (or the return-page check against the Stripe API) reports `payment_status=paid` for the same session and exact amount.
+- **Access**: no login. Each order has a random 128-bit key in its link (also emailed). Files are stored in `uploads/p360-data-clean/` under random names and only served through the plugin after the key check.
+- **Processing**: the browser calls `/process` repeatedly; each call cleans 40 rows (8 concurrent Provero requests, duplicates looked up once, blanks skipped). It is resumable if the tab closes. If Provero returns 401/402 the job pauses, the site admin is emailed, and it resumes once fixed.
+- One upload per order, up to the number of records purchased. Files are deleted after the retention period.
+
+## Notes
+- You pay Provero separately: keep the Provero account topped up, or paid orders will pause.
+- On nginx the `.htaccess` in the storage folder has no effect; the random filenames and REST-only download still apply, but you may add a `deny all` location for `uploads/p360-data-clean/`.
+- Rows that fail a lookup (network/validation) get the reason in the `Error` column and are not retried automatically.

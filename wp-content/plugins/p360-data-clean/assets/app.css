@@ -1,0 +1,26 @@
+.p360{max-width:760px;margin:0 auto;font-family:inherit;color:inherit}
+.p360 *{box-sizing:border-box}
+.p360 h3{margin:0 0 .5rem}
+.p360 .p360-card{border:1px solid #d6d9de;border-radius:10px;padding:1.25rem;margin:0 0 1.25rem;background:#fff}
+.p360 .p360-svc{display:flex;gap:.75rem;align-items:flex-start;border:2px solid #d6d9de;border-radius:10px;padding:.9rem 1rem;margin:0 0 .6rem;cursor:pointer}
+.p360 .p360-svc:has(input:checked){border-color:#2563eb;background:#f3f7ff}
+.p360 .p360-svc input{margin-top:.3rem}
+.p360 .p360-svc strong{display:block}
+.p360 .p360-svc small{color:#555}
+.p360 .p360-price{margin-left:auto;white-space:nowrap;font-weight:600}
+.p360 label.p360-f{display:block;font-weight:600;margin:.9rem 0 .3rem}
+.p360 input[type=number],.p360 input[type=email],.p360 input[type=file]{width:100%;padding:.6rem;border:1px solid #b9bec6;border-radius:6px;font-size:1rem}
+.p360 table.p360-sum{width:100%;border-collapse:collapse;margin:1rem 0}
+.p360 table.p360-sum td{padding:.3rem 0;border:0}
+.p360 table.p360-sum td:last-child{text-align:right}
+.p360 table.p360-sum tr.t td{font-weight:700;border-top:1px solid #d6d9de;padding-top:.5rem}
+.p360 button.p360-btn,.p360 a.p360-btn{display:inline-block;background:#2563eb;color:#fff;border:0;border-radius:6px;padding:.7rem 1.3rem;font-size:1rem;cursor:pointer;text-decoration:none}
+.p360 a.p360-btn.alt{background:#fff;color:#2563eb;border:1px solid #2563eb}
+.p360 button[disabled]{opacity:.5;cursor:default}
+.p360 .p360-err{color:#b42318;margin:.6rem 0}
+.p360 .p360-note{color:#555;font-size:.9rem}
+.p360 .p360-bar{height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden;margin:.8rem 0}
+.p360 .p360-bar>div{height:100%;background:#2563eb;width:0;transition:width .3s}
+.p360 .p360-steps{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem;padding:0;list-style:none;font-size:.9rem}
+.p360 .p360-steps li{padding:.25rem .7rem;border-radius:999px;background:#e5e7eb}
+.p360 .p360-steps li.on{background:#2563eb;color:#fff}

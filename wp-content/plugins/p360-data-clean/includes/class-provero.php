@@ -29,6 +29,7 @@ final class P360_Provero {
      *         account itself is the problem (bad token / no balance) and the job must pause rather than burn through rows.
      */
     public static function lookup(string $service, array $values): array {
+        if (p360_dry_run()) { return self::fake($service, $values); }
         $results = [];
         $fatal = '';
         $token = p360_secret('provero_token');
@@ -76,6 +77,40 @@ final class P360_Provero {
             if ($fatal !== '') { break; }
         }
         return ['results' => $results, 'fatal' => $fatal];
+    }
+
+    /** Deterministic fake responses shaped like the real API, run through the same mapping. No network calls. */
+    private static function fake(string $service, array $values): array {
+        $results = [];
+        foreach ($values as $i => $raw) {
+            $h = crc32($raw) % 5;
+            if ($service === 'email') {
+                $body = ['email' => $raw];
+                if (!filter_var($raw, FILTER_VALIDATE_EMAIL)) {
+                    $code = 422; $j = ['message' => 'The email field must be a valid email address.', 'errors' => ['email' => ['The email field must be a valid email address.']]];
+                } else {
+                    $code = 200;
+                    $j = ['emailAddress' => $raw, 'isSyntaxValid' => true, 'isMailboxDeliverable' => $h !== 0, 'isCatchAll' => $h === 1,
+                          'typoSuggestion' => $raw, 'isDisposable' => stripos($raw, 'mailinator') !== false,
+                          'isRoleBased' => (bool)preg_match('/^(info|admin|sales|support)@/i', $raw),
+                          'riskLevel' => $h === 0 ? 'HIGH' : ($h === 1 ? 'MEDIUM' : 'LOW'), 'checkResult' => 'dry_run'];
+                }
+            } else {
+                $phone = p360_normalise_uk_phone($raw);
+                $body = ['phone' => $phone];
+                if (!preg_match('/^\+\d{10,15}$/', $phone) || ($service === 'tps' && strpos($phone, '+44') !== 0)) {
+                    $code = 422; $j = ['message' => 'Invalid phone number', 'errors' => ['phone' => ['Invalid phone number']]];
+                } elseif ($service === 'hlr') {
+                    $status = [0 => 'Dead', 1 => 'Out of network'][$h] ?? 'Live';
+                    $code = 200; $j = ['results' => [['to' => $phone, 'status' => $status, 'live' => $status === 'Live', 'currentNetwork' => 'Dry Run Mobile', 'originalNetwork' => 'Dry Run Mobile']]];
+                } else {
+                    $code = 200; $j = ['phone' => 'tel:' . $phone, 'onTps' => $h < 2, 'tpsRegisteredDate' => $h < 2 ? '2024-01-01' : '',
+                                       'onCtps' => $h === 0, 'ctpsRegisteredDate' => $h === 0 ? '2024-01-01' : '', 'prettierPhoneNumber' => '0' . substr($phone, 3)];
+                }
+            }
+            $results[$i] = ['cols' => self::map($service, $body, $code, $j, '')];
+        }
+        return ['results' => $results, 'fatal' => ''];
     }
 
     private static function error_text(int $code, array $j, string $curlErr): string {

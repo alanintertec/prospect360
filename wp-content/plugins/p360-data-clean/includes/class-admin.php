@@ -17,6 +17,7 @@ final class P360_Admin {
         return [
             'Provero'          => [['provero_token', 'Provero API token', 'password']],
             'Stripe'           => [['test_mode', 'Test mode (use the Stripe test keys; no real money is taken)', 'checkbox'],
+                                   ['dry_run', 'Dry run (test mode only): fake Provero results, no Provero calls or credit used', 'checkbox'],
                                    ['stripe_test_secret', 'Stripe TEST secret key (sk_test_...)', 'password'],
                                    ['stripe_test_webhook_secret', 'Stripe TEST webhook signing secret (whsec_...)', 'password'],
                                    ['stripe_secret', 'Stripe secret key (sk_live_...)', 'password'],
@@ -50,7 +51,7 @@ final class P360_Admin {
         <div class="wrap">
             <h1>Data Clean</h1>
             <?php if (p360_test_mode()) : ?>
-                <div class="notice notice-warning inline"><p><strong>TEST MODE is on.</strong> Stripe test keys are used and visitors see a test banner. Create a separate webhook in Stripe's <em>test</em> dashboard and put its secret in the TEST webhook field.</p></div>
+                <div class="notice notice-warning inline"><p><strong>TEST MODE is on<?php echo p360_dry_run() ? ' with DRY RUN (Provero is not called)' : ' (Provero is still called and uses credit)'; ?>.</strong> Stripe test keys are used and visitors see a test banner. Create a separate webhook in Stripe's <em>test</em> dashboard and put its secret in the TEST webhook field.</p></div>
             <?php else : ?>
                 <div class="notice notice-success inline"><p><strong>LIVE mode.</strong> Real payments are taken.</p></div>
             <?php endif; ?>
@@ -66,7 +67,7 @@ final class P360_Admin {
                     <?php foreach ($group as [$key, $label, $type]) :
                         if ($type === 'checkbox') : ?>
                         <tr><th scope="row"><?php echo esc_html($label); ?></th>
-                            <td><input type="checkbox" name="p360_settings[<?php echo esc_attr($key); ?>]" value="1" <?php checked(p360_test_mode()); ?> <?php disabled(defined('P360_TEST_MODE')); ?>></td></tr>
+                            <td><input type="checkbox" name="p360_settings[<?php echo esc_attr($key); ?>]" value="1" <?php checked($key === 'dry_run' ? p360_opt('dry_run') === '1' : p360_test_mode()); ?> <?php disabled($key === 'test_mode' && defined('P360_TEST_MODE')); ?>></td></tr>
                         <?php continue; endif;
                         $val = $type === 'password' ? '' : (string)($o[$key] ?? p360_defaults()[$key]);
                         $ph = $type === 'password' && !empty($o[$key]) ? 'saved - leave blank to keep' : '';

@@ -6,6 +6,7 @@ function p360_defaults(): array {
         'provero_token'         => '',
         'stripe_secret'         => '',
         'stripe_webhook_secret' => '',
+        'dry_run'               => '',       // '1' = fake Provero results (only honoured in test mode)
         'test_mode'             => '',       // '1' = use the Stripe test keys below
         'stripe_test_secret'    => '',
         'stripe_test_webhook_secret' => '',
@@ -31,6 +32,12 @@ function p360_opt(string $key) {
 /** Secrets can be pinned in wp-config.php with these constants instead of the database. */
 function p360_test_mode(): bool {
     return defined('P360_TEST_MODE') ? (bool)P360_TEST_MODE : p360_opt('test_mode') === '1';
+}
+
+/** Dry run: fake Provero results, no API calls. Only ever active while Stripe is in test mode. */
+function p360_dry_run(): bool {
+    if (!p360_test_mode()) { return false; }
+    return defined('P360_DRY_RUN') ? (bool)P360_DRY_RUN : p360_opt('dry_run') === '1';
 }
 
 function p360_secret(string $name): string {

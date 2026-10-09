@@ -28,7 +28,7 @@
 
   function testBanner() {
     return el('div', { 'class': 'p360-test' }, [el('strong', { text: 'TEST MODE - no real payment is taken. ' }),
-      'Pay with card 4242 4242 4242 4242, any future expiry, any CVC.']);
+      'Pay with card 4242 4242 4242 4242, any future expiry, any CVC.' + (C.dryRun ? ' DRY RUN: results are fake and nothing is sent to Provero.' : '')]);
   }
 
   /* ---------- buy ---------- */

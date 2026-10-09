@@ -20,7 +20,9 @@ Visitors pick a service, pay per record with Stripe Checkout, download a sample 
 3. In **Settings -> Data Clean** tick *Test mode* and fill the two TEST fields (or define `P360_TEST_MODE`, `P360_STRIPE_TEST_SECRET`, `P360_STRIPE_TEST_WEBHOOK_SECRET` in `wp-config.php`).
 4. Visitors now see a TEST MODE banner. Pay with card `4242 4242 4242 4242`, any future expiry, any CVC.
 
-Safety checks: test mode refuses to run with a live key (and live mode refuses a `sk_test_` key), and webhook events from the other mode are ignored. Provero is not mocked, so test orders still use real Provero credits - keep test uploads small.
+**Dry run (optional, test mode only):** tick *Dry run* (or define `P360_DRY_RUN`) to return deterministic fake results instead of calling Provero, so testing uses no Provero credit. It is ignored whenever test mode is off, so live orders always use the real API. Do one small real run (no dry run) before launch to prove the Provero connection.
+
+Safety checks: test mode refuses to run with a live key (and live mode refuses a `sk_test_` key), and webhook events from the other mode are ignored. Without dry run, test orders still use real Provero credits - keep test uploads small.
 
 ## How it works
 - **Pricing**: `records x price`, minimum charge applies, VAT added as a second Stripe line item. The server recomputes the price; the browser's total is display only.

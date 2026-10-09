@@ -31,7 +31,7 @@ final class P360_Rest {
     }
 
     public static function checkout(WP_REST_Request $r) {
-        if (!P360_Stripe::configured() || p360_secret('provero_token') === '') {
+        if (!P360_Stripe::configured() || (p360_secret('provero_token') === '' && !p360_dry_run())) {
             return self::err('Ordering is not available right now.', 503);
         }
         $ip = md5((string)($_SERVER['REMOTE_ADDR'] ?? ''));

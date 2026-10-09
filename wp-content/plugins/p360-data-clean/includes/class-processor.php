@@ -33,7 +33,9 @@ final class P360_Processor {
     private static function key(string $service, string $value): string {
         $v = trim($value);
         if ($v === '') { return ''; }
-        return $service === 'email' ? strtolower($v) : p360_normalise_uk_phone($v);
+        if ($service === 'email') { return strtolower($v); }
+        $n = p360_normalise_uk_phone($v);
+        return $n !== '' ? $n : 'raw:' . strtolower($v);
     }
 
     /**

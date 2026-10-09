@@ -32,6 +32,12 @@ Safety checks: test mode refuses to run with a live key (and live mode refuses a
 - **Balance, not one-shot**: an order is a balance of records. Each upload reserves one record per row that has a value in the email/phone column (blank cells are free; invalid values and repeats still count, so customers should check their data first). Repeats within a file are only looked up once with Provero, so they cost the customer a record but cost you nothing extra. Customers can upload several files via the same order link until the balance is used up or expires (default 365 days, setting *Unused records expire after*). One file is processed at a time. Result files are deleted after the retention period (default 7 days).
 - Upgrading from 1.0: orders with a previous upload are migrated automatically (their used records stay used, the rest becomes balance).
 
+## Input checks (before any API call)
+- **Repeats** within a file (emails case-insensitive; phone numbers compared after normalising) are looked up once and the result reused.
+- **Email**: a basic format check (single `@`, dotted domain, length). Failures show "Invalid email address format" and are not sent to Provero.
+- **Phone**: digits with optional `+ ( ) - .` and spaces. `07700 900123`, `+44 7700 900123`, `+44 (0)7700 900123`, `+44-7700-900123`, `0044 7700 900123` and `44 7700 900123` all become `+447700900123`. Letters/other symbols and wrong lengths are rejected locally; numbers with no country code are assumed UK; TPS rejects non-UK numbers.
+- Rows rejected locally still use a record (the customer is responsible for their data) but cost you nothing.
+
 ## Notes
 - You pay Provero separately: keep the Provero account topped up, or paid orders will pause.
 - On nginx the `.htaccess` in the storage folder has no effect; the random filenames and REST-only download still apply, but you may add a `deny all` location for `uploads/p360-data-clean/`.

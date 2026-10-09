@@ -113,14 +113,44 @@ function p360_storage_dir(): string {
     return $dir;
 }
 
+/**
+ * Normalise a phone number to E.164, assuming UK when no country code is given.
+ * Accepts digits with spaces, dots, dashes and brackets, e.g. 07700 900123, +44 7700 900123, +44(0)7700 900123,
+ * +44-7700-900123, 0044 7700 900123. Returns '' if the value cannot be a phone number (letters, stray symbols).
+ */
 function p360_normalise_uk_phone(string $raw): string {
-    $p = preg_replace('/[^\d+]/', '', trim($raw));
-    if ($p === '' || $p === null) { return ''; }
-    if (strpos($p, '00') === 0) { $p = '+' . substr($p, 2); }
-    if ($p[0] === '+') { return $p; }
-    if ($p[0] === '0') { return '+44' . substr($p, 1); }
-    if (strpos($p, '44') === 0) { return '+' . $p; }
-    return '+44' . $p;
+    $p = trim($raw);
+    if ($p === '' || preg_match('/[^\d\s+().\-]/', $p) || preg_match('/.\+/', $p)) { return ''; }
+    $p = preg_replace('/\(\s*0\s*\)/', '', $p);              // "(0)" trunk-prefix marker
+    $digits = preg_replace('/\D/', '', $p);
+    if ($digits === '') { return ''; }
+    $intl = $p[0] === '+';
+    if (!$intl && strpos($digits, '00') === 0) { $intl = true; $digits = substr($digits, 2); }
+    if ($intl) {
+        if (strpos($digits, '44') === 0) { return '+44' . ltrim(substr($digits, 2), '0'); }   // +44 07700... -> +447700...
+        return '+' . $digits;
+    }
+    if ($digits[0] === '0') { return '+44' . substr($digits, 1); }
+    if (strpos($digits, '44') === 0 && strlen($digits) >= 11) { return '+44' . ltrim(substr($digits, 2), '0'); }
+    return '+44' . $digits;
+}
+
+/** Local sanity checks so obviously bad values never cost an API call. Returns an error message or ''. */
+function p360_local_error(string $service, string $raw): string {
+    $v = trim($raw);
+    if ($service === 'email') {
+        if (strlen($v) > 254 || !filter_var($v, FILTER_VALIDATE_EMAIL) || !preg_match('/^[^@]+@[^@\s]+\.[^@\s.]{2,}$/', $v)) {
+            return 'Invalid email address format';
+        }
+        return '';
+    }
+    $p = p360_normalise_uk_phone($v);
+    if ($p === '') { return 'Invalid phone number (digits only, with optional + ( ) - . and spaces)'; }
+    $digits = strlen($p) - 1;
+    if ($digits < 8 || $digits > 15) { return 'Invalid phone number length'; }
+    if (strpos($p, '+44') === 0 && ($digits - 2 < 9 || $digits - 2 > 10)) { return 'Invalid UK phone number length'; }
+    if ($service === 'tps' && strpos($p, '+44') !== 0) { return 'TPS screening only supports UK numbers'; }
+    return '';
 }
 
 /** Stop spreadsheet apps executing formulas in cells we write. */

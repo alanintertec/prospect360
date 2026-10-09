@@ -36,7 +36,13 @@ final class P360_Provero {
         $url = rtrim(p360_provero_base(), '/') . self::endpoint($service);
         $keys = array_keys($values);
 
-        foreach (array_chunk($keys, self::CONCURRENCY) as $group) {
+        // values that fail the local check are never sent to the API
+        foreach ($keys as $pos => $i) {
+            $err = p360_local_error($service, $values[$i]);
+            if ($err !== '') { $results[$i] = ['cols' => self::fail_cols($service, $err)]; unset($keys[$pos]); }
+        }
+
+        foreach (array_chunk(array_values($keys), self::CONCURRENCY) as $group) {
             $mh = curl_multi_init();
             $handles = [];
             foreach ($group as $i) {
@@ -84,6 +90,8 @@ final class P360_Provero {
         $results = [];
         foreach ($values as $i => $raw) {
             $h = crc32($raw) % 5;
+            $local = p360_local_error($service, $raw);
+            if ($local !== '') { $results[$i] = ['cols' => self::fail_cols($service, $local)]; continue; }
             if ($service === 'email') {
                 $body = ['email' => $raw];
                 if (!filter_var($raw, FILTER_VALIDATE_EMAIL)) {
@@ -113,6 +121,12 @@ final class P360_Provero {
         return ['results' => $results, 'fatal' => ''];
     }
 
+    private static function fail_cols(string $service, string $msg): array {
+        $c = array_fill(0, count(self::columns($service)), '');
+        $c[count($c) - 1] = $msg;
+        return array_map('p360_cell', $c);
+    }
+
     private static function error_text(int $code, array $j, string $curlErr): string {
         if ($curlErr !== '') { return 'Lookup failed (network)'; }
         if (!empty($j['errors']) && is_array($j['errors'])) {
@@ -126,11 +140,7 @@ final class P360_Provero {
 
     private static function map(string $service, array $req, int $code, array $j, string $curlErr): array {
         $n = count(self::columns($service));
-        $fail = function (string $msg) use ($n): array {
-            $c = array_fill(0, $n, '');
-            $c[$n - 1] = $msg;
-            return array_map('p360_cell', $c);
-        };
+        $fail = function (string $msg) use ($service): array { return self::fail_cols($service, $msg); };
         if ($code < 200 || $code >= 300 || $curlErr !== '') {
             return $fail(self::error_text($code, $j, $curlErr));
         }

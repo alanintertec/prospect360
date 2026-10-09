@@ -7,6 +7,7 @@ Visitors pick a service, pay per record with Stripe Checkout, download a sample 
 | Email verification | `POST /api/validate/email` | syntax, deliverable, catch-all, disposable, role-based, risk level, check result, typo suggestion |
 | Mobile (HLR) | `POST /api/validate/phone` | normalised number, status, live, current/original network |
 | TPS / CTPS | `POST /api/validate/phone-tps` | formatted number, on TPS/CTPS, registration dates |
+| UK address validation (PAF) | `POST /api/validate/uk-address` | status (verified / review / no_match), premise match, standardised lines, post town, postcode, country, full address, note |
 
 ## Install
 1. Copy `wp-content/plugins/p360-data-clean` into the site and activate it (this creates the `wp_p360_orders` table and a daily cleanup job).
@@ -31,6 +32,13 @@ Safety checks: test mode refuses to run with a live key (and live mode refuses a
 - **Processing**: the browser calls `/process` repeatedly; each call cleans 40 rows (8 concurrent Provero requests, duplicates looked up once, blanks skipped). It is resumable if the tab closes. If Provero returns 401/402 the job pauses, the site admin is emailed, and it resumes once fixed.
 - **Balance, not one-shot**: an order is a balance of records. Each upload reserves one record per row that has a value in the email/phone column (blank cells are free; invalid values and repeats still count, so customers should check their data first). Repeats within a file are only looked up once with Provero, so they cost the customer a record but cost you nothing extra. Customers can upload several files via the same order link until the balance is used up or expires (default 365 days, setting *Unused records expire after*). One file is processed at a time. Result files are deleted after the retention period (default 7 days).
 - Upgrading from 1.0: orders with a previous upload are migrated automatically (their used records stay used, the rest becomes balance).
+
+## UK address validation
+- Input columns: either `full_address`, or `postcode` plus `address_line_1` (ideally `town_city`); optional `address_line_2`, `address_line_3`, `county`. Common variants (`address1`, `town`, `city`, `post_code`...) are recognised.
+- A row's address is the combination of those columns. It is billed once per non-blank row and looked up once per distinct address (case/spacing ignored).
+- `verified` = complete PAF match. `review` (possible match) and `no_match` rows get a note, count as "not verified" in the summary and appear in **Rows needing attention**.
+- If Provero returns 502/503 the job pauses (the admin is emailed) and resumes automatically. Set your retail price under *Settings -> Data Clean* (Provero's entry price is 0.046 per address, sold in prepaid packs, so check your margin).
+- The UK *postcode lookup / address picker* service is not part of this plugin.
 
 ## Input checks (before any API call)
 - **Repeats** within a file (emails case-insensitive; phone numbers compared after normalising) are looked up once and the result reused.

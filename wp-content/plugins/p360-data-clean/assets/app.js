@@ -33,6 +33,15 @@
 
   function helpFor(service) {
     var email = service === 'email', tps = service === 'tps';
+    if (service === 'address') {
+      return el('div', { 'class': 'p360-help' }, [el('strong', { text: 'Accepted format' }), el('ul', {}, [
+        'One address per row. Use EITHER a "full_address" column, OR a "postcode" column plus "address_line_1" (and ideally "town_city").',
+        'Optional columns: address_line_2, address_line_3, county. Column names such as address1, town, city and post_code also work.',
+        'Example: address_line_1 = 20 Canterbury Crescent, town_city = Sheffield, postcode = S10 3RX.',
+        'Each address comes back as verified (a complete Royal Mail PAF match), needs review (a possible match) or no match. Non-UK addresses are not supported.'
+      ].map(function (t) { return el('li', { text: t }); })),
+        el('p', { 'class': 'p360-note', text: 'Please check your data first: each row with any address detail uses one record. Completely blank rows are free.' })]);
+    }
     var items = email ? [
       'One email address per row, in a column headed "email".',
       'Format: name@domain.com - no spaces, one @, and a domain with a dot (e.g. jane@example.co.uk).',
@@ -121,7 +130,7 @@
     var kids = [steps(active ? 2 : (done ? 3 : 1)), el('h3', { text: 'Payment received - ' + s.label }),
       el('p', {}, [el('strong', { text: n(o.remaining) }), ' of ' + n(o.records) + ' records remaining. Unused records are valid until ' + fmtDate(o.expires) + '.']),
       el('div', { 'class': 'p360-bar' }, [usedBar]),
-      el('p', { 'class': 'p360-note', text: 'Each row with ' + (o.service === 'email' ? 'an email address' : 'a phone number') + ' uses one record, whether or not the value turns out to be valid. Rows with a blank value are free. You can upload several files until your records are used up.' }),
+      el('p', { 'class': 'p360-note', text: 'Each row with ' + ({ email: 'an email address', address: 'an address' }[o.service] || 'a phone number') + ' uses one record, whether or not the value turns out to be valid. Rows with a blank value are free. You can upload several files until your records are used up.' }),
       el('p', {}, [el('a', { 'class': 'p360-btn alt', href: C.rest + 'sample?' + q, text: 'Download sample CSV' })])];
 
     var live = null;
@@ -136,7 +145,7 @@
     } else {
       kids.push(el('p', {}, ['All records on this order have been used. ', el('a', { href: location.pathname, text: 'Place a new order' }), '.']));
     }
-    if (o.jobs.length) { kids.push(filesTable(o.jobs)); }
+    if (o.jobs.length) { kids.push(filesTable(o.jobs, o.service)); }
     card(kids);
     if (active) { runJob(active.job, live); }
   }
@@ -145,7 +154,7 @@
     var err = el('div', { 'class': 'p360-err', role: 'alert' });
     var file = el('input', { type: 'file', accept: '.csv,text/csv', id: 'p360-file' });
     var btn = el('button', { type: 'submit', 'class': 'p360-btn', text: 'Upload and clean' });
-    var form = el('form', {}, [helpFor(o.service), el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Upload a CSV with a "' + s.column + '" column (max ' + C.maxMb + 'MB)' }), file, err, btn]);
+    var form = el('form', {}, [helpFor(o.service), el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Upload a CSV with ' + s.columnLabel + ' (max ' + C.maxMb + 'MB)' }), file, err, btn]);
     form.addEventListener('submit', function (ev) {
       ev.preventDefault(); err.textContent = '';
       if (!file.files[0]) { err.textContent = 'Please choose a CSV file.'; return; }
@@ -157,7 +166,8 @@
     return form;
   }
 
-  function filesTable(jobs) {
+  function filesTable(jobs, service) {
+    var okLabel = service === 'address' ? ' verified' : ' checked', badLabel = service === 'address' ? ' not verified' : ' invalid / rejected';
     var blocks = jobs.map(function (j) {
       var kids = [el('div', {}, [el('strong', { text: fmtDate(j.created) }), ' - ' + n(j.total) + ' rows, ' + n(j.billed) + ' records used'])];
       if (j.status === 'processing') { kids.push(el('div', { 'class': 'p360-note', text: 'Processing ' + n(j.done) + ' of ' + n(j.total) + '...' })); }
@@ -165,12 +175,12 @@
       else {
         var st = j.stats;
         if (st) {
-          kids.push(el('div', {}, [el('span', { 'class': 'p360-pill ok', text: n(st.ok) + ' checked' }), el('span', { 'class': 'p360-pill bad', text: n(st.invalid) + ' invalid / rejected' }), el('span', { 'class': 'p360-pill', text: n(st.blank) + ' blank' })]));
+          kids.push(el('div', {}, [el('span', { 'class': 'p360-pill ok', text: n(st.ok) + okLabel }), el('span', { 'class': 'p360-pill bad', text: n(st.invalid) + badLabel }), el('span', { 'class': 'p360-pill', text: n(st.blank) + ' blank' })]));
           var reasons = Object.keys(st.reasons || {});
           if (reasons.length) { kids.push(el('ul', { 'class': 'p360-reasons' }, reasons.map(function (r) { return el('li', { text: n(st.reasons[r]) + ' x ' + r }); }))); }
         }
         var links = [el('a', { 'class': 'p360-btn', href: C.rest + 'download?' + q + '&job=' + j.job, text: 'Download cleaned CSV' })];
-        if (st && st.invalid > 0) { links.push(' ', el('a', { 'class': 'p360-btn alt', href: C.rest + 'download?' + q + '&job=' + j.job + '&invalid=1', text: 'Invalid rows only (' + n(st.invalid) + ')' })); }
+        if (st && st.invalid > 0) { links.push(' ', el('a', { 'class': 'p360-btn alt', href: C.rest + 'download?' + q + '&job=' + j.job + '&invalid=1', text: (service === 'address' ? 'Rows needing attention (' : 'Invalid rows only (') + n(st.invalid) + ')' })); }
         kids.push(el('p', {}, links));
       }
       return el('div', { 'class': 'p360-job' }, kids);

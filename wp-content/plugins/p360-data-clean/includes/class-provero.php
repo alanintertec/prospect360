@@ -7,7 +7,7 @@ final class P360_Provero {
     const CONCURRENCY = 8;
 
     private static function endpoint(string $service): string {
-        return ['email' => '/api/validate/email', 'hlr' => '/api/validate/phone', 'tps' => '/api/validate/phone-tps'][$service];
+        return ['email' => '/api/validate/email', 'hlr' => '/api/validate/phone', 'tps' => '/api/validate/phone-tps', 'address' => '/api/validate/uk-address'][$service];
     }
 
     public static function columns(string $service): array {
@@ -15,6 +15,9 @@ final class P360_Provero {
             case 'email':
                 return ['[EMAIL] Syntax Valid', '[EMAIL] Mailbox Deliverable', '[EMAIL] Catch All', '[EMAIL] Disposable',
                         '[EMAIL] Role Based', '[EMAIL] Risk Level', '[EMAIL] Check Result', '[EMAIL] Typo Suggestion', '[EMAIL] Error'];
+            case 'address':
+                return ['[ADDRESS] Status', '[ADDRESS] Premise Match', '[ADDRESS] Line 1', '[ADDRESS] Line 2', '[ADDRESS] Line 3',
+                        '[ADDRESS] Post Town', '[ADDRESS] Postcode', '[ADDRESS] Country', '[ADDRESS] Full Address', '[ADDRESS] Note'];
             case 'hlr':
                 return ['[PHONE] Normalised Number', '[PHONE] HLR Status', '[PHONE] Live', '[PHONE] Current Network', '[PHONE] Original Network', '[PHONE] Error'];
             default:
@@ -47,7 +50,9 @@ final class P360_Provero {
             $handles = [];
             foreach ($group as $i) {
                 $raw = $values[$i];
-                $body = $service === 'email' ? ['email' => $raw] : ['phone' => p360_normalise_uk_phone($raw)];
+                if ($service === 'email') { $body = ['email' => $raw]; }
+                elseif ($service === 'address') { $body = (json_decode($raw, true) ?: []) + ['output_format' => 'standard']; }
+                else { $body = ['phone' => p360_normalise_uk_phone($raw)]; }
                 $ch = curl_init($url);
                 curl_setopt_array($ch, [
                     CURLOPT_POST           => true,
@@ -73,9 +78,9 @@ final class P360_Provero {
                 curl_multi_remove_handle($mh, $ch);
                 curl_close($ch);
 
-                if ($code === 401 || $code === 402) {
-                    $fatal = $code === 401 ? 'Provero rejected the API token.' : 'Provero account has insufficient balance.';
-                    continue;   // leave unset so the row is retried after the account is fixed
+                if ($code === 401 || $code === 402 || $code === 502 || $code === 503) {
+                    $fatal = $code === 401 ? 'Provero rejected the API token.' : ($code === 402 ? 'Provero account has insufficient balance.' : 'Provero service is temporarily unavailable.');
+                    continue;   // leave unset so the row is retried after the problem is fixed
                 }
                 $results[$i] = ['cols' => self::map($service, $body, $code, is_array($json) ? $json : [], $err)];
             }
@@ -92,7 +97,17 @@ final class P360_Provero {
             $h = crc32($raw) % 5;
             $local = p360_local_error($service, $raw);
             if ($local !== '') { $results[$i] = ['cols' => self::fail_cols($service, $local)]; continue; }
-            if ($service === 'email') {
+            if ($service === 'address') {
+                $a = json_decode($raw, true) ?: [];
+                $body = $a;
+                $pc = strtoupper($a['postcode'] ?? 'AB1 2CD');
+                $town = strtoupper($a['town_city'] ?? 'DRYTOWN');
+                $l1 = $a['address_line_1'] ?? ($a['full_address'] ?? '1 Dry Run Road');
+                $st = $h === 0 ? 'no_match' : ($h === 1 ? 'review' : 'verified');
+                if ($st === 'no_match') { $code = 404; $j = ['address_status' => 'no_match', 'premise_match' => 'NO_MATCH']; }
+                else { $code = 200; $j = ['address_status' => $st, 'premise_match' => $st === 'verified' ? 'FULL' : 'PARTIAL', 'address_line_1' => $l1, 'address_line_2' => $a['address_line_2'] ?? '', 'address_line_3' => '',
+                                          'post_town' => $town, 'postcode' => $pc, 'country' => 'England', 'full_address' => trim("$l1, $town, $pc", ', ')]; }
+            } elseif ($service === 'email') {
                 $body = ['email' => $raw];
                 if (!filter_var($raw, FILTER_VALIDATE_EMAIL)) {
                     $code = 422; $j = ['message' => 'The email field must be a valid email address.', 'errors' => ['email' => ['The email field must be a valid email address.']]];
@@ -141,8 +156,17 @@ final class P360_Provero {
     private static function map(string $service, array $req, int $code, array $j, string $curlErr): array {
         $n = count(self::columns($service));
         $fail = function (string $msg) use ($service): array { return self::fail_cols($service, $msg); };
-        if ($code < 200 || $code >= 300 || $curlErr !== '') {
+        $no_match = $service === 'address' && $code === 404 && isset($j['address_status']);
+        if (($code < 200 || $code >= 300 || $curlErr !== '') && !$no_match) {
             return $fail(self::error_text($code, $j, $curlErr));
+        }
+        if ($service === 'address') {
+            $st = (string)($j['address_status'] ?? '');
+            $note = $st === 'verified' ? '' : ($st === 'review' ? 'Needs review: possible match only' : ($st === 'no_match' ? 'No matching PAF address found' : 'Could not be checked'));
+            return array_map('p360_cell', [
+                $st, $j['premise_match'] ?? '', $j['address_line_1'] ?? '', $j['address_line_2'] ?? '', $j['address_line_3'] ?? '',
+                $j['post_town'] ?? '', $j['postcode'] ?? '', $j['country'] ?? '', $j['full_address'] ?? '', $note,
+            ]);
         }
         if ($service === 'email') {
             $typo = (string)($j['typoSuggestion'] ?? '');

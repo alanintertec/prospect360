@@ -23,6 +23,38 @@ final class P360_Processor {
         return -1;
     }
 
+    /**
+     * Map the header row to the columns a service needs.
+     * @return array{col:int,fields:array<string,int>,error:string}
+     */
+    private static function map_columns(string $service, array $svc, array $headers): array {
+        if ($service !== 'address') {
+            $col = self::find_column($headers, $svc['aliases']);
+            return ['col' => $col, 'fields' => [], 'error' => $col < 0 ? "Could not find a \"{$svc['column']}\" column in your header row. Download the sample CSV to see the expected format." : ''];
+        }
+        $fields = [];
+        foreach ($svc['fields'] as $name => $aliases) {
+            $i = self::find_column($headers, $aliases);
+            if ($i >= 0) { $fields[$name] = $i; }
+        }
+        $ok = isset($fields['full_address']) || (isset($fields['postcode']) && (isset($fields['address_line_1']) || isset($fields['town_city'])));
+        return ['col' => -1, 'fields' => $fields, 'error' => $ok ? '' :
+            'We need either a "full_address" column, or a "postcode" column plus "address_line_1" (and ideally "town_city"). Download the sample CSV to see the expected format.'];
+    }
+
+    /** The value a row is billed, looked up and de-duplicated on ('' = blank). Addresses combine several columns into one JSON string. */
+    public static function row_value(string $service, array $meta, array $r): string {
+        if ($service === 'address') {
+            $out = [];
+            foreach ($meta['fields'] ?? [] as $name => $i) {
+                $v = trim((string)preg_replace('/\s+/', ' ', (string)($r[$i] ?? '')));
+                if ($v !== '') { $out[$name] = $v; }
+            }
+            return $out ? (string)wp_json_encode($out) : '';
+        }
+        return trim((string)($r[$meta['col']] ?? ''));
+    }
+
     private static function is_blank_row($row): bool {
         if (!is_array($row)) { return true; }
         foreach ($row as $cell) { if (trim((string)$cell) !== '') { return false; } }
@@ -33,7 +65,7 @@ final class P360_Processor {
     private static function key(string $service, string $value): string {
         $v = trim($value);
         if ($v === '') { return ''; }
-        if ($service === 'email') { return strtolower($v); }
+        if ($service === 'email' || $service === 'address') { return strtolower($v); }
         $n = p360_normalise_uk_phone($v);
         return $n !== '' ? $n : 'raw:' . strtolower($v);
     }
@@ -75,22 +107,20 @@ final class P360_Processor {
         if (!$headers) { fclose($h); return $fail('The file looks empty.'); }
         $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string)$headers[0]);
         $headers = array_map('trim', array_map('strval', $headers));
-        $col = self::find_column($headers, $svc['aliases']);
-        if ($col < 0) {
-            fclose($h);
-            return $fail("Could not find a \"{$svc['column']}\" column in your header row. Download the sample CSV to see the expected format.");
-        }
+        $map = self::map_columns($order['service'], $svc, $headers);
+        if ($map['error'] !== '') { fclose($h); return $fail($map['error']); }
+        $meta = ['col' => $map['col'], 'fields' => $map['fields'], 'delim' => $delim, 'ncols' => count($headers)];
         $offset = ftell($h);
         $rows = 0;
         $billed = 0;
         while (($r = fgetcsv($h, 0, $delim)) !== false) {
             if (self::is_blank_row($r)) { continue; }
             $rows++;
-            if (trim((string)($r[$col] ?? '')) !== '') { $billed++; }
+            if (self::row_value($order['service'], $meta, $r) !== '') { $billed++; }
         }
         fclose($h);
         if ($rows === 0) { return $fail('No data rows found under the header.'); }
-        if ($billed === 0) { return $fail("No values found in the \"{$svc['column']}\" column."); }
+        if ($billed === 0) { return $fail($order['service'] === 'address' ? 'No addresses found in your address columns.' : "No values found in the \"{$svc['column']}\" column."); }
         if ($billed > $remaining) {
             return $fail("Your file has " . number_format($billed) . " rows with a value but only " . number_format($remaining) .
                 " records remain on this order. Remove some rows, or place a new order.");
@@ -110,7 +140,7 @@ final class P360_Processor {
             'id' => $job_id, 'order_id' => $order['id'], 'status' => 'processing',
             'in_file' => $name, 'out_file' => $out_name, 'total_rows' => $rows, 'billed' => $billed,
             'done_rows' => 0, 'in_offset' => $offset,
-            'job' => wp_json_encode(['col' => $col, 'delim' => $delim, 'ncols' => count($headers)]),
+            'job' => wp_json_encode($meta),
             'created_at' => time(),
         ]);
         return ['ok' => true, 'job' => $job_id];
@@ -157,8 +187,8 @@ final class P360_Processor {
             $cache = self::read_cache($cache_path);
             $todo = [];
             foreach ($rows as $r) {
-                $k = self::key($order['service'], $r[$meta['col']]);
-                if ($k !== '' && !isset($cache[$k]) && !isset($todo[$k])) { $todo[$k] = trim($r[$meta['col']]); }
+                $k = self::key($order['service'], self::row_value($order['service'], $meta, $r));
+                if ($k !== '' && !isset($cache[$k]) && !isset($todo[$k])) { $todo[$k] = self::row_value($order['service'], $meta, $r); }
             }
             if ($todo) {
                 $keys = array_keys($todo);
@@ -181,7 +211,7 @@ final class P360_Processor {
             $out = fopen("$dir/{$j['out_file']}", 'a');
             flock($out, LOCK_EX);
             foreach ($rows as $r) {
-                $k = self::key($order['service'], $r[$meta['col']]);
+                $k = self::key($order['service'], self::row_value($order['service'], $meta, $r));
                 if ($k === '') {
                     $cols = array_fill(0, $n, '');
                     $cols[$n - 1] = 'No value supplied';

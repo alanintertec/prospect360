@@ -14,6 +14,7 @@ function p360_defaults(): array {
         'price_email'           => '0.012',
         'price_hlr'             => '0.009',
         'price_tps'             => '0.008',
+        'price_address'         => '0.09',   // Provero entry price is 0.046 per address
         'vat_rate'              => '20',     // percent, 0 to disable
         'min_records'           => '100',
         'max_records'           => '20000',
@@ -71,6 +72,7 @@ function p360_services(): array {
             'sample'  => [['first_name' => 'Jane', 'surname' => 'Smith', 'email' => 'jane.smith@example.com'],
                           ['first_name' => 'Tom', 'surname' => 'Jones', 'email' => 'tom@example.org']],
             'price'   => (float)p360_opt('price_email'),
+            'columnLabel' => 'an "email" column',
         ],
         'hlr' => [
             'label'   => 'Mobile (HLR) verification',
@@ -80,6 +82,7 @@ function p360_services(): array {
             'sample'  => [['first_name' => 'Jane', 'surname' => 'Smith', 'phone_number' => '07700900123'],
                           ['first_name' => 'Tom', 'surname' => 'Jones', 'phone_number' => '+447700900456']],
             'price'   => (float)p360_opt('price_hlr'),
+            'columnLabel' => 'a "phone_number" column',
         ],
         'tps' => [
             'label'   => 'TPS / CTPS screening',
@@ -89,6 +92,27 @@ function p360_services(): array {
             'sample'  => [['first_name' => 'Jane', 'surname' => 'Smith', 'phone_number' => '01302778473'],
                           ['first_name' => 'Tom', 'surname' => 'Jones', 'phone_number' => '02071234567']],
             'price'   => (float)p360_opt('price_tps'),
+            'columnLabel' => 'a "phone_number" column',
+        ],
+        'address' => [
+            'label'   => 'UK address validation (PAF)',
+            'desc'    => 'Check and standardise UK addresses against the Royal Mail Postcode Address File: verified, needs review or no match.',
+            'column'  => 'postcode',
+            'columnLabel' => 'address columns (see "Accepted format")',
+            // several input columns; a row's value is the combination of whichever of these it has
+            'fields'  => [
+                'full_address'   => ['full_address', 'address', 'fulladdress'],
+                'address_line_1' => ['address_line_1', 'address1', 'address_1', 'address_line1', 'line1', 'line_1', 'street'],
+                'address_line_2' => ['address_line_2', 'address2', 'address_2', 'address_line2', 'line2', 'line_2'],
+                'address_line_3' => ['address_line_3', 'address3', 'address_3', 'address_line3', 'line3', 'line_3'],
+                'town_city'      => ['town_city', 'town', 'city', 'post_town', 'posttown'],
+                'county'         => ['county'],
+                'postcode'       => ['postcode', 'post_code', 'postal_code', 'zip', 'zip_code'],
+            ],
+            'aliases' => [],
+            'sample'  => [['first_name' => 'Jane', 'surname' => 'Smith', 'address_line_1' => '10 Downing Street', 'address_line_2' => '', 'town_city' => 'London', 'postcode' => 'SW1A 2AA'],
+                          ['first_name' => 'Tom', 'surname' => 'Jones', 'address_line_1' => '20 Canterbury Crescent', 'address_line_2' => '', 'town_city' => 'Sheffield', 'postcode' => 'S10 3RX']],
+            'price'   => (float)p360_opt('price_address'),
         ],
     ];
 }
@@ -142,6 +166,13 @@ function p360_local_error(string $service, string $raw): string {
         if (strlen($v) > 254 || !filter_var($v, FILTER_VALIDATE_EMAIL) || !preg_match('/^[^@]+@[^@\s]+\.[^@\s.]{2,}$/', $v)) {
             return 'Invalid email address format';
         }
+        return '';
+    }
+    if ($service === 'address') {
+        $a = json_decode($v, true);
+        if (!is_array($a) || !$a) { return 'No address supplied'; }
+        if (isset($a['postcode']) && strlen($a['postcode']) > 16) { return 'Postcode is too long'; }
+        if (!isset($a['full_address']) && !isset($a['address_line_1']) && !isset($a['postcode'])) { return 'Not enough address detail (need an address line, full address or postcode)'; }
         return '';
     }
     $p = p360_normalise_uk_phone($v);

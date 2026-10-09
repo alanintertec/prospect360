@@ -22,7 +22,7 @@ final class P360_Admin {
                                    ['stripe_test_webhook_secret', 'Stripe TEST webhook signing secret (whsec_...)', 'password'],
                                    ['stripe_secret', 'Stripe secret key (sk_live_...)', 'password'],
                                    ['stripe_webhook_secret', 'Stripe webhook signing secret (whsec_...)', 'password']],
-            'Pricing (GBP per record, ex VAT)' => [['price_email', 'Email verification', 'text'], ['price_hlr', 'Mobile (HLR) verification', 'text'], ['price_tps', 'TPS / CTPS screening', 'text'],
+            'Pricing (GBP per record, ex VAT)' => [['price_email', 'Email verification', 'text'], ['price_hlr', 'Mobile (HLR) verification', 'text'], ['price_tps', 'TPS / CTPS screening', 'text'], ['price_address', 'UK address validation (PAF)', 'text'],
                                    ['vat_rate', 'VAT rate %', 'text'], ['min_charge_pence', 'Minimum charge (pence, ex VAT)', 'text']],
             'Limits'           => [['min_records', 'Minimum records per order', 'text'], ['max_records', 'Maximum records per order', 'text'],
                                    ['max_upload_mb', 'Maximum upload size (MB)', 'text'], ['retention_days', 'Keep customer files for (days)', 'text'], ['credit_expiry_days', 'Unused records on an order expire after (days)', 'text']],

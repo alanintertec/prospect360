@@ -13,7 +13,7 @@ final class P360_Shortcode {
 
         $services = [];
         foreach (p360_services() as $key => $s) {
-            $services[$key] = ['label' => $s['label'], 'desc' => $s['desc'], 'price' => $s['price'], 'column' => $s['column']];
+            $services[$key] = ['label' => $s['label'], 'desc' => $s['desc'], 'price' => $s['price'], 'column' => $s['column'], 'columnLabel' => $s['columnLabel']];
         }
         wp_localize_script('p360-data-clean', 'P360', [
             'rest'      => esc_url_raw(rest_url('p360/v1/')),

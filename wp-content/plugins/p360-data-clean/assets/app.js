@@ -52,7 +52,7 @@
     form.appendChild(el('label', { 'class': 'p360-f', 'for': 'p360-email', text: 'Your email (receipt and order link)' }));
     form.appendChild(email);
     form.appendChild(sum); form.appendChild(err); form.appendChild(btn);
-    form.appendChild(el('p', { 'class': 'p360-note', text: 'You buy a balance of records. Each unique value in your files uses one record, and you can upload several files until the balance is used. Unused records are valid for ' + C.expiryDays + ' days. After payment you can download a sample CSV and upload your files.' }));
+    form.appendChild(el('p', { 'class': 'p360-note', text: 'You buy a balance of records. Each row with a value in your files uses one record (please check your data first), and you can upload several files until the balance is used. Unused records are valid for ' + C.expiryDays + ' days. After payment you can download a sample CSV and upload your files.' }));
 
     function update() {
       var n = parseInt(records.value, 10) || 0, ok = n >= C.min && n <= C.max;
@@ -103,7 +103,7 @@
     var kids = [steps(active ? 2 : (done ? 3 : 1)), el('h3', { text: 'Payment received - ' + s.label }),
       el('p', {}, [el('strong', { text: n(o.remaining) }), ' of ' + n(o.records) + ' records remaining. Unused records are valid until ' + fmtDate(o.expires) + '.']),
       el('div', { 'class': 'p360-bar' }, [usedBar]),
-      el('p', { 'class': 'p360-note', text: 'Each unique ' + (o.service === 'email' ? 'email address' : 'phone number') + ' in a file uses one record. Blank rows and repeats within a file are free. You can upload several files until your records are used up.' }),
+      el('p', { 'class': 'p360-note', text: 'Each row with ' + (o.service === 'email' ? 'an email address' : 'a phone number') + ' uses one record, whether or not the value turns out to be valid. Rows with a blank value are free. You can upload several files until your records are used up.' }),
       el('p', {}, [el('a', { 'class': 'p360-btn alt', href: C.rest + 'sample?' + q, text: 'Download sample CSV' })])];
 
     var live = null;

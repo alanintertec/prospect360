@@ -5,8 +5,9 @@ defined('ABSPATH') || exit;
  * Handles uploaded CSV files in resumable chunks. The browser drives it by calling /process repeatedly,
  * so no cron or long-running PHP request is needed and a closed tab can simply be resumed.
  *
- * Billing: an order is a balance of records. Each upload reserves one record per UNIQUE non-empty value
- * (blank rows and repeated values are free), and each unique value is looked up exactly once per file.
+ * Billing: an order is a balance of records. Each upload reserves one record per row that has a value in the
+ * target column (blank cells are free; the customer is responsible for the quality of their data). Repeated
+ * values within a file are still billed per row, but only looked up once with Provero.
  */
 final class P360_Processor {
 
@@ -79,20 +80,17 @@ final class P360_Processor {
         }
         $offset = ftell($h);
         $rows = 0;
-        $unique = [];
+        $billed = 0;
         while (($r = fgetcsv($h, 0, $delim)) !== false) {
             if (self::is_blank_row($r)) { continue; }
             $rows++;
-            $k = self::key($order['service'], (string)($r[$col] ?? ''));
-            if ($k !== '') { $unique[$k] = true; }
+            if (trim((string)($r[$col] ?? '')) !== '') { $billed++; }
         }
         fclose($h);
-        $billed = count($unique);
-        unset($unique);
         if ($rows === 0) { return $fail('No data rows found under the header.'); }
         if ($billed === 0) { return $fail("No values found in the \"{$svc['column']}\" column."); }
         if ($billed > $remaining) {
-            return $fail("Your file has " . number_format($billed) . " unique values but only " . number_format($remaining) .
+            return $fail("Your file has " . number_format($billed) . " rows with a value but only " . number_format($remaining) .
                 " records remain on this order. Remove some rows, or place a new order.");
         }
 

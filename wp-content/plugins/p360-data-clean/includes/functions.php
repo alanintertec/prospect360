@@ -19,7 +19,8 @@ function p360_defaults(): array {
         'max_records'           => '20000',
         'min_charge_pence'      => '300',    // Stripe's GBP minimum is 30p
         'max_upload_mb'         => '5',
-        'retention_days'        => '7',
+        'retention_days'        => '7',     // customer files
+        'credit_expiry_days'    => '365',   // unused records on an order
     ];
 }
 

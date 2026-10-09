@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Prospect360 Data Clean
  * Description: Pay-per-record data cleansing. Visitors choose a service (email, HLR, TPS), pay with Stripe Checkout, download a sample CSV, then upload their file to be cleaned through the Provero API. Use the [p360_data_clean] shortcode.
- * Version:     1.0.0
+ * Version:     1.1.0
  * Requires PHP: 7.4
  * Author:      Intertec Data Solutions
  * Text Domain: p360-data-clean
@@ -10,7 +10,7 @@
 
 defined('ABSPATH') || exit;
 
-define('P360_VERSION', '1.0.0');
+define('P360_VERSION', '1.1.0');
 define('P360_DIR', plugin_dir_path(__FILE__));
 define('P360_URL', plugin_dir_url(__FILE__));
 
@@ -37,6 +37,7 @@ register_deactivation_hook(__FILE__, function () {
 add_action('plugins_loaded', function () {
     if (get_option('p360_db_version') !== P360_VERSION) {
         P360_Orders::install();
+        P360_Orders::migrate();
         update_option('p360_db_version', P360_VERSION);
     }
     P360_Rest::init();

@@ -91,7 +91,7 @@ final class P360_Rest {
             P360_Stripe::reconcile($o);
             $o = P360_Orders::get($o['id']);
         }
-        return P360_Processor::progress($o) + ['paid' => $o['status'] !== 'pending'];
+        return P360_Processor::order_view($o);
     }
 
     public static function upload(WP_REST_Request $r) {
@@ -101,13 +101,15 @@ final class P360_Rest {
         if (!$file) { return self::err('No file received.', 400); }
         $res = P360_Processor::accept_upload($o, $file);
         if (!$res['ok']) { return self::err($res['error'], 400); }
-        return P360_Processor::progress(P360_Orders::get($o['id']));
+        return P360_Processor::progress(P360_Orders::job_get($res['job']));
     }
 
     public static function process(WP_REST_Request $r) {
         $o = self::order_from($r);
         if (!$o) { return self::err('Order not found.', 404); }
-        return P360_Processor::process_chunk($o);
+        if ($o['status'] !== 'paid') { return self::err('Order not available.', 404); }
+        $p = P360_Processor::process_chunk($o, (string)$r->get_param('job'));
+        return $p['status'] === 'missing' ? self::err('File not found.', 404) : $p;
     }
 
     private static function send_csv(string $filename, callable $body): void {
@@ -133,12 +135,11 @@ final class P360_Rest {
 
     public static function download(WP_REST_Request $r) {
         $o = self::order_from($r);
-        if (!$o || !in_array($o['status'], ['complete', 'processing'], true) || $o['out_file'] === '') {
-            return self::err('Not available.', 404);
-        }
-        if ($o['status'] !== 'complete') { return self::err('Your file is still being processed.', 409); }
-        $path = p360_storage_dir() . '/' . $o['out_file'];
-        if (!preg_match('/^[a-f0-9]{32}\.csv$/', $o['out_file']) || !is_file($path)) { return self::err('Not available.', 404); }
-        self::send_csv('prospect360-cleaned-' . substr($o['id'], 0, 8) . '.csv', function () use ($path) { readfile($path); });
+        $j = $o ? P360_Orders::job_get((string)$r->get_param('job')) : null;
+        if (!$j || $j['order_id'] !== $o['id'] || $j['out_file'] === '' || $j['status'] === 'expired') { return self::err('Not available.', 404); }
+        if ($j['status'] !== 'complete') { return self::err('Your file is still being processed.', 409); }
+        $path = p360_storage_dir() . '/' . $j['out_file'];
+        if (!preg_match('/^[a-f0-9]{32}\.csv$/', $j['out_file']) || !is_file($path)) { return self::err('Not available.', 404); }
+        self::send_csv('prospect360-cleaned-' . substr($j['id'], 0, 8) . '.csv', function () use ($path) { readfile($path); });
     }
 }

@@ -23,6 +23,7 @@ final class P360_Shortcode {
             'min'       => (int)p360_opt('min_records'),
             'max'       => (int)p360_opt('max_records'),
             'maxMb'     => (float)p360_opt('max_upload_mb'),
+            'expiryDays' => (int)p360_opt('credit_expiry_days'),
             'testMode'  => p360_test_mode(),
             'dryRun'    => p360_dry_run(),
         ]);

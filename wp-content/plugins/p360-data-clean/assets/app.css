@@ -25,3 +25,4 @@
 .p360 .p360-steps li{padding:.25rem .7rem;border-radius:999px;background:#e5e7eb}
 .p360 .p360-steps li.on{background:#2563eb;color:#fff}
 .p360 .p360-test{background:#fff7e0;border:1px solid #f0b400;border-radius:8px;padding:.7rem 1rem;margin:0 0 1rem;font-size:.95rem}
+.p360 table.p360-files{width:100%;border-collapse:collapse;font-size:.95rem}.p360 table.p360-files td{padding:.4rem .3rem;border-top:1px solid #e5e7eb}

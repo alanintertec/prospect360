@@ -29,7 +29,8 @@ Safety checks: test mode refuses to run with a live key (and live mode refuses a
 - **Payment**: the order is only marked paid when the Stripe webhook (or the return-page check against the Stripe API) reports `payment_status=paid` for the same session and exact amount.
 - **Access**: no login. Each order has a random 128-bit key in its link (also emailed). Files are stored in `uploads/p360-data-clean/` under random names and only served through the plugin after the key check.
 - **Processing**: the browser calls `/process` repeatedly; each call cleans 40 rows (8 concurrent Provero requests, duplicates looked up once, blanks skipped). It is resumable if the tab closes. If Provero returns 401/402 the job pauses, the site admin is emailed, and it resumes once fixed.
-- One upload per order, up to the number of records purchased. Files are deleted after the retention period.
+- **Balance, not one-shot**: an order is a balance of records. Each upload reserves one record per *unique* email/number (blank rows and repeats are free, and each unique value is looked up once per file). Customers can upload several files via the same order link until the balance is used up or expires (default 365 days, setting *Unused records expire after*). One file is processed at a time. Result files are deleted after the retention period (default 7 days).
+- Upgrading from 1.0: orders with a previous upload are migrated automatically (their used records stay used, the rest becomes balance).
 
 ## Notes
 - You pay Provero separately: keep the Provero account topped up, or paid orders will pause.

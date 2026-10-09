@@ -2,8 +2,11 @@
 defined('ABSPATH') || exit;
 
 /**
- * Handles an uploaded CSV in resumable chunks. The browser drives it by calling /process repeatedly,
+ * Handles uploaded CSV files in resumable chunks. The browser drives it by calling /process repeatedly,
  * so no cron or long-running PHP request is needed and a closed tab can simply be resumed.
+ *
+ * Billing: an order is a balance of records. Each upload reserves one record per UNIQUE non-empty value
+ * (blank rows and repeated values are free), and each unique value is looked up exactly once per file.
  */
 final class P360_Processor {
 
@@ -25,14 +28,24 @@ final class P360_Processor {
         return true;
     }
 
+    /** Identity of a value for billing/caching: same address or same number written differently counts once. */
+    private static function key(string $service, string $value): string {
+        $v = trim($value);
+        if ($v === '') { return ''; }
+        return $service === 'email' ? strtolower($v) : p360_normalise_uk_phone($v);
+    }
+
     /**
-     * Validate and register an uploaded file for a paid order.
-     * @return array{ok:bool,error?:string}
+     * Validate an uploaded file, reserve records from the order balance and register a job.
+     * @return array{ok:bool,error?:string,job?:string}
      */
     public static function accept_upload(array $order, array $file): array {
         $svc = p360_services()[$order['service']];
         $max = (int)((float)p360_opt('max_upload_mb') * 1024 * 1024);
-        if ($order['status'] !== 'paid') { return ['ok' => false, 'error' => 'This order has already been used.']; }
+        if ($order['status'] !== 'paid') { return ['ok' => false, 'error' => 'This order is not available.']; }
+        $remaining = P360_Orders::remaining($order);
+        if ($remaining < 1) { return ['ok' => false, 'error' => 'All records on this order have been used.']; }
+        if (P360_Orders::active_job($order['id'])) { return ['ok' => false, 'error' => 'Please wait for your current file to finish first.']; }
         if (!isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
             return ['ok' => false, 'error' => 'The upload failed. Please try again.'];
         }
@@ -66,13 +79,21 @@ final class P360_Processor {
         }
         $offset = ftell($h);
         $rows = 0;
+        $unique = [];
         while (($r = fgetcsv($h, 0, $delim)) !== false) {
-            if (!self::is_blank_row($r)) { $rows++; }
+            if (self::is_blank_row($r)) { continue; }
+            $rows++;
+            $k = self::key($order['service'], (string)($r[$col] ?? ''));
+            if ($k !== '') { $unique[$k] = true; }
         }
         fclose($h);
+        $billed = count($unique);
+        unset($unique);
         if ($rows === 0) { return $fail('No data rows found under the header.'); }
-        if ($rows > (int)$order['records']) {
-            return $fail("Your file has $rows rows but this order covers {$order['records']} records. Please place a new order for the larger size.");
+        if ($billed === 0) { return $fail("No values found in the \"{$svc['column']}\" column."); }
+        if ($billed > $remaining) {
+            return $fail("Your file has " . number_format($billed) . " unique values but only " . number_format($remaining) .
+                " records remain on this order. Remove some rows, or place a new order.");
         }
 
         $out_name = bin2hex(random_bytes(16)) . '.csv';
@@ -80,80 +101,91 @@ final class P360_Processor {
         fputcsv($o, array_merge($headers, P360_Provero::columns($order['service'])));
         fclose($o);
 
-        P360_Orders::update($order['id'], [
-            'status'     => 'processing',
-            'in_file'    => $name,
-            'out_file'   => $out_name,
-            'total_rows' => $rows,
-            'done_rows'  => 0,
-            'in_offset'  => $offset,
-            'job'        => wp_json_encode(['col' => $col, 'delim' => $delim, 'ncols' => count($headers)]),
-            'message'    => '',
+        if (!P360_Orders::reserve($order['id'], $billed)) {
+            @unlink("$dir/$out_name");
+            return $fail('Not enough records remain on this order.');
+        }
+        $job_id = bin2hex(random_bytes(12));
+        P360_Orders::job_create([
+            'id' => $job_id, 'order_id' => $order['id'], 'status' => 'processing',
+            'in_file' => $name, 'out_file' => $out_name, 'total_rows' => $rows, 'billed' => $billed,
+            'done_rows' => 0, 'in_offset' => $offset,
+            'job' => wp_json_encode(['col' => $col, 'delim' => $delim, 'ncols' => count($headers)]),
+            'created_at' => time(),
         ]);
-        return ['ok' => true];
+        return ['ok' => true, 'job' => $job_id];
+    }
+
+    private static function read_cache(string $path): array {
+        $c = is_file($path) ? json_decode((string)file_get_contents($path), true) : null;
+        return is_array($c) ? $c : [];
     }
 
     /**
-     * Process the next chunk. Safe against concurrent calls (per-order MySQL lock).
+     * Process the next chunk of a job. Safe against concurrent calls (per-job MySQL lock).
      * @return array progress for the UI
      */
-    public static function process_chunk(array $order): array {
+    public static function process_chunk(array $order, string $job_id): array {
         global $wpdb;
-        $lockname = 'p360_' . $order['id'];
+        $lockname = 'p360_' . $job_id;
         if ((int)$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lockname)) !== 1) {
-            return self::progress(P360_Orders::get($order['id']));   // another request is working on it
+            return self::progress(P360_Orders::job_get($job_id));   // another request is working on it
         }
         try {
-            $order = P360_Orders::get($order['id']);
-            if ($order['status'] !== 'processing') { return self::progress($order); }
+            $j = P360_Orders::job_get($job_id);
+            if (!$j || $j['order_id'] !== $order['id']) { return ['status' => 'missing']; }
+            if ($j['status'] !== 'processing') { return self::progress($j); }
             @set_time_limit(120);
 
-            $job = json_decode((string)$order['job'], true);
+            $meta = json_decode((string)$j['job'], true);
             $dir = p360_storage_dir();
-            $in = fopen("$dir/{$order['in_file']}", 'r');
+            $in = fopen("$dir/{$j['in_file']}", 'r');
             if (!$in) { throw new RuntimeException('input missing'); }
-            fseek($in, (int)$order['in_offset']);
+            fseek($in, (int)$j['in_offset']);
 
             $rows = [];
-            while (count($rows) < self::CHUNK_ROWS && ($r = fgetcsv($in, 0, $job['delim'])) !== false) {
+            while (count($rows) < self::CHUNK_ROWS && ($r = fgetcsv($in, 0, $meta['delim'])) !== false) {
                 if (self::is_blank_row($r)) { continue; }
-                $r = array_slice(array_pad(array_map('strval', $r), $job['ncols'], ''), 0, $job['ncols']);
-                $rows[] = $r;
+                $rows[] = array_slice(array_pad(array_map('strval', $r), $meta['ncols'], ''), 0, $meta['ncols']);
             }
             $new_offset = ftell($in);
             $eof = feof($in) || fgetc($in) === false;
             fclose($in);
 
-            // unique, non-empty values only: blanks are free for us and duplicates are only looked up once
-            $unique = [];
+            // look up each unique value once per file: anything seen in an earlier chunk comes from the cache
+            $cache_path = "$dir/{$j['out_file']}.cache";
+            $cache = self::read_cache($cache_path);
+            $todo = [];
             foreach ($rows as $r) {
-                $v = trim($r[$job['col']]);
-                if ($v !== '' && !isset($unique[$v])) { $unique[$v] = $v; }
+                $k = self::key($order['service'], $r[$meta['col']]);
+                if ($k !== '' && !isset($cache[$k]) && !isset($todo[$k])) { $todo[$k] = trim($r[$meta['col']]); }
             }
-            $found = ['results' => [], 'fatal' => ''];
-            if ($unique) {
-                $found = P360_Provero::lookup($order['service'], array_values($unique));
-            }
-            if ($found['fatal'] !== '') {
-                self::notify_admin($found['fatal'], $order);
-                P360_Orders::update($order['id'], ['message' => 'Processing is temporarily paused. We have been notified and it will resume shortly - please keep this page open or come back later.']);
-                $o = P360_Orders::get($order['id']);
-                $p = self::progress($o);
-                $p['paused'] = true;
-                return $p;
+            if ($todo) {
+                $keys = array_keys($todo);
+                $found = P360_Provero::lookup($order['service'], array_values($todo));
+                if ($found['fatal'] !== '') {
+                    self::notify_admin($found['fatal'], $order);
+                    P360_Orders::job_update($job_id, ['message' => 'Processing is temporarily paused. We have been notified and it will resume shortly - please keep this page open or come back later.']);
+                    return self::progress(P360_Orders::job_get($job_id)) + ['paused' => true];
+                }
+                foreach ($keys as $idx => $k) {
+                    if (isset($found['results'][$idx])) { $cache[$k] = $found['results'][$idx]['cols']; }
+                }
+                $tmp = $cache_path . '.' . bin2hex(random_bytes(3)) . '.tmp';
+                file_put_contents($tmp, wp_json_encode($cache));
+                rename($tmp, $cache_path);
             }
 
             $n = count(P360_Provero::columns($order['service']));
-            $out = fopen("$dir/{$order['out_file']}", 'a');
+            $out = fopen("$dir/{$j['out_file']}", 'a');
             flock($out, LOCK_EX);
-            $idx = array_flip(array_values($unique));
             foreach ($rows as $r) {
-                $v = trim($r[$job['col']]);
-                if ($v === '') {
+                $k = self::key($order['service'], $r[$meta['col']]);
+                if ($k === '') {
                     $cols = array_fill(0, $n, '');
                     $cols[$n - 1] = 'No value supplied';
                 } else {
-                    $cols = $found['results'][$idx[$v]]['cols'] ?? null;
+                    $cols = $cache[$k] ?? null;
                     if ($cols === null) { $cols = array_fill(0, $n, ''); $cols[$n - 1] = 'Lookup failed'; }
                 }
                 fputcsv($out, array_merge($r, $cols));
@@ -161,27 +193,42 @@ final class P360_Processor {
             flock($out, LOCK_UN);
             fclose($out);
 
-            $done = (int)$order['done_rows'] + count($rows);
-            $fields = ['done_rows' => $done, 'in_offset' => $new_offset, 'message' => ''];
-            if ($eof || !$rows) { $fields['status'] = 'complete'; }
-            P360_Orders::update($order['id'], $fields);
-            return self::progress(P360_Orders::get($order['id']));
+            $fields = ['done_rows' => (int)$j['done_rows'] + count($rows), 'in_offset' => $new_offset, 'message' => ''];
+            if ($eof || !$rows) { $fields['status'] = 'complete'; @unlink($cache_path); @unlink("$dir/{$j['in_file']}"); $fields['in_file'] = ''; }
+            P360_Orders::job_update($job_id, $fields);
+            return self::progress(P360_Orders::job_get($job_id));
         } catch (Throwable $e) {
-            P360_Orders::update($order['id'], ['message' => 'Something went wrong while processing. Please retry.']);
-            return self::progress(P360_Orders::get($order['id']));
+            P360_Orders::job_update($job_id, ['message' => 'Something went wrong while processing. Please retry.']);
+            return self::progress(P360_Orders::job_get($job_id) ?: ['id' => $job_id, 'status' => 'processing', 'done_rows' => 0, 'total_rows' => 0, 'billed' => 0, 'message' => '', 'created_at' => 0]);
         } finally {
             $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lockname));
         }
     }
 
-    public static function progress(array $o): array {
+    /** One job as the UI sees it. */
+    public static function progress(array $j): array {
         return [
-            'status'  => $o['status'],
-            'done'    => (int)$o['done_rows'],
-            'total'   => (int)$o['total_rows'],
-            'records' => (int)$o['records'],
-            'service' => $o['service'],
-            'message' => $o['message'],
+            'job'     => $j['id'],
+            'status'  => $j['status'],
+            'done'    => (int)$j['done_rows'],
+            'total'   => (int)$j['total_rows'],
+            'billed'  => (int)$j['billed'],
+            'created' => (int)$j['created_at'],
+            'message' => $j['message'],
+        ];
+    }
+
+    /** The order as the UI sees it: balance plus its files. */
+    public static function order_view(array $o): array {
+        $jobs = array_map([__CLASS__, 'progress'], P360_Orders::jobs($o['id']));
+        return [
+            'status'    => $o['status'],
+            'service'   => $o['service'],
+            'records'   => (int)$o['records'],
+            'used'      => (int)$o['used_records'],
+            'remaining' => P360_Orders::remaining($o),
+            'expires'   => $o['status'] === 'pending' ? 0 : P360_Orders::expires_at($o),
+            'jobs'      => $jobs,
         ];
     }
 
@@ -190,7 +237,7 @@ final class P360_Processor {
         if (get_transient('p360_admin_notified')) { return; }
         set_transient('p360_admin_notified', 1, HOUR_IN_SECONDS);
         wp_mail(get_option('admin_email'), 'Prospect360 Data Clean is paused',
-            "$reason\n\nOrder {$order['id']} ({$order['service']}, {$order['records']} records) is waiting. " .
+            "$reason\n\nOrder {$order['id']} ({$order['service']}) has a file waiting. " .
             "Fix the Provero account and the customer's page will resume automatically.");
     }
 }

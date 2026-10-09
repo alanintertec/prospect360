@@ -52,7 +52,7 @@
     form.appendChild(el('label', { 'class': 'p360-f', 'for': 'p360-email', text: 'Your email (receipt and order link)' }));
     form.appendChild(email);
     form.appendChild(sum); form.appendChild(err); form.appendChild(btn);
-    form.appendChild(el('p', { 'class': 'p360-note', text: 'Your order covers up to the number of records you choose. You will be able to download a sample CSV and upload your file after payment.' }));
+    form.appendChild(el('p', { 'class': 'p360-note', text: 'You buy a balance of records. Each unique value in your files uses one record, and you can upload several files until the balance is used. Unused records are valid for ' + C.expiryDays + ' days. After payment you can download a sample CSV and upload your files.' }));
 
     function update() {
       var n = parseInt(records.value, 10) || 0, ok = n >= C.min && n <= C.max;
@@ -82,55 +82,90 @@
   var timer = null;
   function again(fn, ms) { clearTimeout(timer); timer = setTimeout(fn, ms); }
   function card(kids) { root.textContent = ''; if (C.testMode) { root.appendChild(testBanner()); } root.appendChild(kids.shift()); root.appendChild(el('div', { 'class': 'p360-card' }, kids)); }
+  function fmtDate(t) { return new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function n(x) { return Number(x).toLocaleString(); }
 
   function loadOrder() {
+    clearTimeout(timer);
     api('order?' + q).then(function (o) {
       if (o.status === 'pending') { card([steps(0), el('h3', { text: 'Confirming your payment...' }), el('p', { text: 'This usually takes a few seconds.' })]); again(loadOrder, 3000); }
-      else if (o.status === 'paid') { renderPaid(o); }
-      else if (o.status === 'processing') { renderProcessing(o); }
-      else if (o.status === 'complete') { renderDone(o); }
-      else { card([steps(0), el('h3', { text: 'This order has expired' }), el('p', { text: 'Files are removed after a few days. Please place a new order.' }), el('a', { 'class': 'p360-btn', href: location.pathname, text: 'New order' })]); }
+      else if (o.status === 'paid') { renderOrder(o); }
+      else { card([steps(0), el('h3', { text: 'This order has expired' }), el('p', { text: 'Unused records expire ' + C.expiryDays + ' days after payment. Please place a new order.' }), el('a', { 'class': 'p360-btn', href: location.pathname, text: 'New order' })]); }
     }).catch(function (e) { card([steps(0), el('div', { 'class': 'p360-err', text: e.message }), el('a', { 'class': 'p360-btn', href: location.pathname, text: 'Start again' })]); });
   }
 
-  function renderPaid(o) {
-    var s = C.services[o.service], err = el('div', { 'class': 'p360-err', role: 'alert' });
+  function renderOrder(o) {
+    var s = C.services[o.service];
+    var active = o.jobs.filter(function (j) { return j.status === 'processing'; })[0];
+    var done = o.jobs.some(function (j) { return j.status === 'complete'; });
+    var pct = o.records ? Math.round(o.used * 100 / o.records) : 0;
+    var usedBar = el('div', {}); usedBar.style.width = pct + '%';
+    var kids = [steps(active ? 2 : (done ? 3 : 1)), el('h3', { text: 'Payment received - ' + s.label }),
+      el('p', {}, [el('strong', { text: n(o.remaining) }), ' of ' + n(o.records) + ' records remaining. Unused records are valid until ' + fmtDate(o.expires) + '.']),
+      el('div', { 'class': 'p360-bar' }, [usedBar]),
+      el('p', { 'class': 'p360-note', text: 'Each unique ' + (o.service === 'email' ? 'email address' : 'phone number') + ' in a file uses one record. Blank rows and repeats within a file are free. You can upload several files until your records are used up.' }),
+      el('p', {}, [el('a', { 'class': 'p360-btn alt', href: C.rest + 'sample?' + q, text: 'Download sample CSV' })])];
+
+    var live = null;
+    if (active) {
+      var bar = el('div', {}); bar.style.width = '0%';
+      var count = el('p', {}), msg = el('p', { 'class': 'p360-note' });
+      live = { bar: bar, count: count, msg: msg };
+      kids.push(el('h3', { text: 'Cleaning your file...' }), el('div', { 'class': 'p360-bar' }, [bar]), count, msg);
+      paint(live, active);
+    } else if (o.remaining > 0) {
+      kids.push(uploadForm(o, s));
+    } else {
+      kids.push(el('p', {}, ['All records on this order have been used. ', el('a', { href: location.pathname, text: 'Place a new order' }), '.']));
+    }
+    if (o.jobs.length) { kids.push(filesTable(o.jobs)); }
+    card(kids);
+    if (active) { runJob(active.job, live); }
+  }
+
+  function uploadForm(o, s) {
+    var err = el('div', { 'class': 'p360-err', role: 'alert' });
     var file = el('input', { type: 'file', accept: '.csv,text/csv', id: 'p360-file' });
     var btn = el('button', { type: 'submit', 'class': 'p360-btn', text: 'Upload and clean' });
-    var form = el('form', {}, [el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Your CSV (max ' + o.records.toLocaleString() + ' rows, ' + C.maxMb + 'MB)' }), file, err, btn]);
+    var form = el('form', {}, [el('label', { 'class': 'p360-f', 'for': 'p360-file', text: 'Upload a CSV with a "' + s.column + '" column (max ' + C.maxMb + 'MB)' }), file, err, btn]);
     form.addEventListener('submit', function (ev) {
       ev.preventDefault(); err.textContent = '';
       if (!file.files[0]) { err.textContent = 'Please choose a CSV file.'; return; }
       btn.disabled = true; btn.textContent = 'Uploading...';
       var fd = new FormData(); fd.append('id', orderId); fd.append('key', orderKey); fd.append('file', file.files[0]);
-      api('upload', { method: 'POST', body: fd }).then(renderProcessing)
+      api('upload', { method: 'POST', body: fd }).then(loadOrder)
         .catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Upload and clean'; });
     });
-    card([steps(1), el('h3', { text: 'Payment received - ' + s.label }),
-      el('p', {}, ['Your order covers up to ', el('strong', { text: o.records.toLocaleString() }), ' records. Your file needs a header row with a ',
-        el('strong', { text: s.column }), ' column; any other columns are kept and returned.']),
-      el('p', {}, [el('a', { 'class': 'p360-btn alt', href: C.rest + 'sample?' + q, text: 'Download sample CSV' })]),
-      el('p', { 'class': 'p360-note', text: 'One file per order. Keep this page link private - we also emailed it to you.' }), form]);
+    return form;
   }
 
-  function renderProcessing(o) {
-    var pct = o.total ? Math.round(o.done * 100 / o.total) : 0;
-    var bar = el('div', {}, []); bar.style.width = pct + '%';
-    var msg = el('p', { 'class': 'p360-note', text: o.message || 'Please keep this page open. You can safely come back to the same link later.' });
-    card([steps(2), el('h3', { text: 'Cleaning your file...' }), el('div', { 'class': 'p360-bar' }, [bar]),
-      el('p', { text: o.done.toLocaleString() + ' of ' + o.total.toLocaleString() + ' rows (' + pct + '%)' }), msg]);
-    api('process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: orderId, key: orderKey }) })
-      .then(function (n) {
-        if (n.status === 'complete') { renderDone(n); } else { n.paused ? again(function () { renderProcessing(n); }, 15000) : renderProcessing(n); }
+  function filesTable(jobs) {
+    var rows = jobs.map(function (j) {
+      var last;
+      if (j.status === 'complete') { last = el('a', { href: C.rest + 'download?' + q + '&job=' + j.job, text: 'Download' }); }
+      else if (j.status === 'processing') { last = document.createTextNode('Processing ' + n(j.done) + '/' + n(j.total)); }
+      else { last = document.createTextNode('Expired'); }
+      return el('tr', {}, [el('td', { text: fmtDate(j.created) }), el('td', { text: n(j.total) + ' rows' }), el('td', { text: n(j.billed) + ' records' }), el('td', {}, [last])]);
+    });
+    return el('div', {}, [el('h3', { text: 'Your files' }), el('table', { 'class': 'p360-files' }, rows),
+      el('p', { 'class': 'p360-note', text: 'Files are deleted automatically after a few days, so download them promptly.' })]);
+  }
+
+  function paint(live, j) {
+    var pct = j.total ? Math.round(j.done * 100 / j.total) : 0;
+    live.bar.style.width = pct + '%';
+    live.count.textContent = n(j.done) + ' of ' + n(j.total) + ' rows (' + pct + '%)';
+    live.msg.textContent = j.message || 'Please keep this page open. You can safely come back to the same link later.';
+  }
+
+  function runJob(jobId, live) {
+    api('process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: orderId, key: orderKey, job: jobId }) })
+      .then(function (j) {
+        if (j.status === 'complete') { loadOrder(); return; }
+        paint(live, j);
+        again(function () { runJob(jobId, live); }, j.paused ? 15000 : 0);
       })
-      .catch(function () { again(function () { renderProcessing(o); }, 5000); });
-  }
-
-  function renderDone(o) {
-    card([steps(3), el('h3', { text: 'Your cleaned file is ready' }),
-      el('p', { text: o.total.toLocaleString() + ' rows processed. Your original columns are kept, with the verification results added on the right.' }),
-      el('p', {}, [el('a', { 'class': 'p360-btn', href: C.rest + 'download?' + q, text: 'Download cleaned CSV' })]),
-      el('p', { 'class': 'p360-note', text: 'Your files are deleted automatically after a few days.' })]);
+      .catch(function () { again(function () { runJob(jobId, live); }, 5000); });
   }
 
   if (orderId && orderKey) { loadOrder(); } else { renderBuy(); }

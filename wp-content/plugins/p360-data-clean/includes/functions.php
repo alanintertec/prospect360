@@ -16,12 +16,12 @@ function p360_defaults(): array {
         'price_tps'             => '0.008',
         'price_address'         => '0.09',   // Provero entry price is 0.046 per address
         'vat_rate'              => '20',     // percent, 0 to disable
-        'min_records'           => '100',
-        'max_records'           => '20000',
-        'min_charge_pence'      => '300',    // Stripe's GBP minimum is 30p
+        'topup_packs'           => '2500,5000,10000',   // pence, ex VAT, comma separated
+        'topup_min_pence'       => '1000',
+        'topup_max_pence'       => '100000',
         'max_upload_mb'         => '5',
         'retention_days'        => '7',     // customer files
-        'credit_expiry_days'    => '365',   // unused records on an order
+        'credit_expiry_days'    => '365',   // unused credit expires this long after the latest top-up
     ];
 }
 
@@ -117,11 +117,10 @@ function p360_services(): array {
     ];
 }
 
-/** Net price in pence for N records, before VAT. Mirrored in assets/app.js (the server is authoritative). */
-function p360_net_pence(string $service, int $records): int {
-    $s = p360_services()[$service];
-    return max((int)p360_opt('min_charge_pence'), (int)ceil(round($records * $s['price'] * 100, 6)));
-}
+/** Price per record in micro-pounds (1 = GBP 0.000001). All wallet money is stored in this unit. */
+function p360_price_micro(string $service): int { return (int)round(p360_services()[$service]['price'] * 1000000); }
+function p360_micro_money(int $micro): string { return '£' . number_format($micro / 1000000, 2); }
+
 function p360_vat_pence(int $net): int { return (int)round($net * ((float)p360_opt('vat_rate') / 100)); }
 function p360_money(int $pence): string { return '£' . number_format($pence / 100, 2); }
 

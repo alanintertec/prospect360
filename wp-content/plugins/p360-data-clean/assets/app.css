@@ -30,3 +30,15 @@
 .p360 .p360-job{border-top:1px solid #e5e7eb;padding:.8rem 0}.p360 .p360-pill{display:inline-block;border-radius:999px;background:#e5e7eb;padding:.15rem .7rem;margin:.3rem .4rem .3rem 0;font-size:.9rem}.p360 .p360-pill.ok{background:#dcfce7}.p360 .p360-pill.bad{background:#fee2e2}
 .p360 ul.p360-reasons{margin:.2rem 0 .5rem 1.1rem;padding:0;font-size:.9rem;color:#444}
 .p360 h3{margin:1.4rem 0 .5rem}.p360 .p360-card>h3:first-child{margin-top:0}
+
+.p360 .p360-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;font-size:.95rem;color:#444}
+.p360 .p360-balance{margin:.6rem 0}.p360 .p360-balance small{display:block;color:#555}.p360 .p360-balance strong{font-size:2rem}
+.p360 button.p360-link{background:none;border:0;color:#2563eb;cursor:pointer;text-decoration:underline;font-size:.95rem;padding:0}
+.p360 .p360-packs{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 .6rem}
+.p360 button.p360-pack{background:#fff;border:2px solid #d6d9de;border-radius:8px;padding:.6rem 1.1rem;font-size:1rem;cursor:pointer}
+.p360 button.p360-pack.on{border-color:#2563eb;background:#f3f7ff}
+.p360 .p360-ok{color:#166534;margin:.6rem 0}
+.p360 table.p360-prices{width:100%;border-collapse:collapse}.p360 table.p360-prices td{padding:.6rem .3rem;border-top:1px solid #e5e7eb;vertical-align:top}.p360 table.p360-prices small{color:#555}
+.p360 details>summary{cursor:pointer;color:#2563eb;margin:.4rem 0}
+.p360 table.p360-files th{text-align:left;padding:.3rem;font-size:.85rem;color:#555}
+.p360 td.neg{color:#b42318}.p360 td.pos{color:#166534}

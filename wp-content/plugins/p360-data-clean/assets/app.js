@@ -26,6 +26,11 @@
     return el('ul', { 'class': 'p360-steps' }, names.map(function (t, i) { return el('li', { 'class': i === active ? 'on' : '', text: t }); }));
   }
 
+  function testBanner() {
+    return el('div', { 'class': 'p360-test' }, [el('strong', { text: 'TEST MODE - no real payment is taken. ' }),
+      'Pay with card 4242 4242 4242 4242, any future expiry, any CVC.']);
+  }
+
   /* ---------- buy ---------- */
   function renderBuy() {
     root.textContent = '';
@@ -68,6 +73,7 @@
         .then(function (j) { location.href = j.url; })
         .catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Pay securely with Stripe'; });
     });
+    if (C.testMode) { root.appendChild(testBanner()); }
     root.appendChild(steps(0)); root.appendChild(el('div', { 'class': 'p360-card' }, [form]));
   }
 
@@ -75,7 +81,7 @@
   var q = 'id=' + encodeURIComponent(orderId) + '&key=' + encodeURIComponent(orderKey);
   var timer = null;
   function again(fn, ms) { clearTimeout(timer); timer = setTimeout(fn, ms); }
-  function card(kids) { root.textContent = ''; root.appendChild(kids.shift()); root.appendChild(el('div', { 'class': 'p360-card' }, kids)); }
+  function card(kids) { root.textContent = ''; if (C.testMode) { root.appendChild(testBanner()); } root.appendChild(kids.shift()); root.appendChild(el('div', { 'class': 'p360-card' }, kids)); }
 
   function loadOrder() {
     api('order?' + q).then(function (o) {

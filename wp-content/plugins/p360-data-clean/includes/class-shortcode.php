@@ -23,6 +23,7 @@ final class P360_Shortcode {
             'min'       => (int)p360_opt('min_records'),
             'max'       => (int)p360_opt('max_records'),
             'maxMb'     => (float)p360_opt('max_upload_mb'),
+            'testMode'  => p360_test_mode(),
         ]);
         return '<div id="p360-app" class="p360"><noscript>Please enable JavaScript to use this tool.</noscript></div>';
     }

@@ -6,6 +6,9 @@ function p360_defaults(): array {
         'provero_token'         => '',
         'stripe_secret'         => '',
         'stripe_webhook_secret' => '',
+        'test_mode'             => '',       // '1' = use the Stripe test keys below
+        'stripe_test_secret'    => '',
+        'stripe_test_webhook_secret' => '',
         // GBP per record, ex VAT. Provero entry-tier cost: email 0.006, HLR 0.0042, TPS 0.004.
         'price_email'           => '0.012',
         'price_hlr'             => '0.009',
@@ -26,11 +29,20 @@ function p360_opt(string $key) {
 }
 
 /** Secrets can be pinned in wp-config.php with these constants instead of the database. */
+function p360_test_mode(): bool {
+    return defined('P360_TEST_MODE') ? (bool)P360_TEST_MODE : p360_opt('test_mode') === '1';
+}
+
 function p360_secret(string $name): string {
+    if (p360_test_mode() && in_array($name, ['stripe_secret', 'stripe_webhook_secret'], true)) {
+        $name = $name === 'stripe_secret' ? 'stripe_test_secret' : 'stripe_test_webhook_secret';
+    }
     $map = [
         'provero_token'         => 'P360_PROVERO_TOKEN',
         'stripe_secret'         => 'P360_STRIPE_SECRET',
         'stripe_webhook_secret' => 'P360_STRIPE_WEBHOOK_SECRET',
+        'stripe_test_secret'    => 'P360_STRIPE_TEST_SECRET',
+        'stripe_test_webhook_secret' => 'P360_STRIPE_TEST_WEBHOOK_SECRET',
     ];
     if (isset($map[$name]) && defined($map[$name])) {
         return (string)constant($map[$name]);

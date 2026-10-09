@@ -73,6 +73,7 @@ final class P360_Rest {
             return self::err('Invalid signature', 400);
         }
         $event = json_decode($payload, true);
+        if (($event['livemode'] ?? null) === p360_test_mode()) { return ['received' => true, 'ignored' => 'mode mismatch']; }
         $type = $event['type'] ?? '';
         if (in_array($type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
             $s = $event['data']['object'] ?? [];

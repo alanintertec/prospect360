@@ -24,3 +24,4 @@
 .p360 .p360-steps{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem;padding:0;list-style:none;font-size:.9rem}
 .p360 .p360-steps li{padding:.25rem .7rem;border-radius:999px;background:#e5e7eb}
 .p360 .p360-steps li.on{background:#2563eb;color:#fff}
+.p360 .p360-test{background:#fff7e0;border:1px solid #f0b400;border-radius:8px;padding:.7rem 1rem;margin:0 0 1rem;font-size:.95rem}

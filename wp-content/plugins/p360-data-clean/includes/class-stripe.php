@@ -5,7 +5,11 @@ defined('ABSPATH') || exit;
 final class P360_Stripe {
 
     public static function configured(): bool {
-        return p360_secret('stripe_secret') !== '' && p360_secret('stripe_webhook_secret') !== '';
+        $key = p360_secret('stripe_secret');
+        if ($key === '' || p360_secret('stripe_webhook_secret') === '') { return false; }
+        // never let a test key run live, or a live key run in test mode
+        $is_test_key = (bool)preg_match('/^(sk|rk)_test_/', $key);
+        return p360_test_mode() ? $is_test_key : !$is_test_key;
     }
 
     /** @throws RuntimeException */

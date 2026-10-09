@@ -14,6 +14,14 @@ Visitors pick a service, pay per record with Stripe Checkout, download a sample 
 3. In Stripe, add a webhook endpoint `https://<site>/wp-json/p360/v1/stripe-webhook` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`, and paste its signing secret into the settings.
 4. Add `[p360_data_clean]` to a page (e.g. `/data-clean/`).
 
+## Test mode (Stripe)
+1. In Stripe, switch the dashboard to **Test mode** and copy the test secret key (`sk_test_...`).
+2. Still in test mode, add a webhook endpoint with the same URL as above (same two events) and copy its signing secret.
+3. In **Settings -> Data Clean** tick *Test mode* and fill the two TEST fields (or define `P360_TEST_MODE`, `P360_STRIPE_TEST_SECRET`, `P360_STRIPE_TEST_WEBHOOK_SECRET` in `wp-config.php`).
+4. Visitors now see a TEST MODE banner. Pay with card `4242 4242 4242 4242`, any future expiry, any CVC.
+
+Safety checks: test mode refuses to run with a live key (and live mode refuses a `sk_test_` key), and webhook events from the other mode are ignored. Provero is not mocked, so test orders still use real Provero credits - keep test uploads small.
+
 ## How it works
 - **Pricing**: `records x price`, minimum charge applies, VAT added as a second Stripe line item. The server recomputes the price; the browser's total is display only.
 - **Payment**: the order is only marked paid when the Stripe webhook (or the return-page check against the Stripe API) reports `payment_status=paid` for the same session and exact amount.
